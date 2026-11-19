@@ -34,7 +34,7 @@ const MANIFEST = {
   name: 'M.O.S.A. Night Shift',
   version: pkg.version,
   author: 'Sirius Crocodile',
-  summary: 'Walk the Museum of Sirius Art after hours, find the bottles, scan into the HD museum.',
+  summary: 'The Museum of Sirius Art after hours. Find the bottles. Scan into the museum.',
   icon: 'eye',
   accent: '7EE8A8',
   category: 'games',
@@ -85,6 +85,7 @@ function validate(outputs) {
   if (total > TOTAL_LIMIT) problems.push(`bundled files are ${total} bytes together, over ${TOTAL_LIMIT}`);
   if (!/^[a-z0-9-]{3,24}$/.test(MANIFEST.id)) problems.push(`app id ${MANIFEST.id}`);
   if (MANIFEST.name.length > 20) problems.push(`app name is over 20 characters`);
+  if (MANIFEST.summary.length > 80) problems.push(`summary is over 80 characters (the App Store's limit)`);
   return { problems, main, total };
 }
 
