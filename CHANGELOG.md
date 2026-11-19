@@ -16,6 +16,9 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 - Per-bottle pixel art: hand-made sprites in `art/pixel/<collection>/<piece>.png`
   replace the automatic ones; `pnpm pixel` (`sheet`, `starter`, `import`,
   `check`) and [docs/PIXEL-ART.md](docs/PIXEL-ART.md).
+- The museum now reads the shift-report QR: a Night Shift sheet on arrival and a
+  one-per-wallet commemorative (built in `bparticle/mosa`, see
+  [docs/MOSA-INTEGRATION.md](docs/MOSA-INTEGRATION.md) §2).
 - `pnpm play`: play the built app in a browser on the Solana OS emulator,
   with simulated mics and nearby badges, reloading on every build.
 

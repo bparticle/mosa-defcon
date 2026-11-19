@@ -1,6 +1,8 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "play", "runtimeExecutable": "pnpm", "runtimeArgs": ["play"], "port": 5317 }
+    { "name": "play", "runtimeExecutable": "pnpm", "runtimeArgs": ["play"], "port": 5317 },
+    { "name": "mosa-api", "runtimeExecutable": "pnpm", "runtimeArgs": ["--dir", "../mosa/apps/api", "dev"], "port": 8787 },
+    { "name": "mosa-museum", "runtimeExecutable": "pnpm", "runtimeArgs": ["--dir", "../mosa/apps/frontend", "dev"], "port": 5173 }
   ]
 }

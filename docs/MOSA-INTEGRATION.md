@@ -47,7 +47,7 @@ the sync reads a local checkout.
 
 ## Badge → MOSA: changes to make in `bparticle/mosa`
 
-In order of value per effort. None are required for v0.1 to work.
+In order of value per effort. None are required for the badge app to work.
 
 ### 1. A `/at/defcon` link (console, no code)
 
@@ -57,23 +57,23 @@ welcome along the lines of *"Off the night shift? Welcome to M.O.S.A."*. Until
 it exists the badge's Lanyard QR still works: an unknown `/at/` slug opens the
 museum as usual (`docs/LINKS.md`).
 
-### 2. Read `?shift=` on arrival (frontend + API)
+### 2. Read `?shift=` on arrival — done
 
-- **Frontend**: when the arrival URL carries `shift`, keep it with the
-  invitation (`state/placesStore.ts`) and, once the visitor is in, open a
-  one-time sheet in the museum's paper-and-ink label style: rooms swept, bottles
-  found, as specimen-case thumbnails, plus *"Collect the Night Shift
-  commemorative"*.
-- **API**: `POST /badge/shift` `{ code, wallet }` → decode with the reference
-  decoder (`tools/lib/shift.mjs` here; copy it to `apps/api/src/lib/`, with a
-  test pinned to `mosa.lock.json`'s registry), record the shift
-  (`badge_shifts`: wallet, code, decoded counts, first seen), and grant the
-  commemorative through **Gifts** (any collection, one per wallet), following
-  the console rule *"Give something to a wallet in Gifts"*.
-- Tier-1 trust only: grant free, one-per-wallet things. See
-  [SOLANA.md](SOLANA.md).
-- Analytics: `shift` present = arrived from a badge. That's DEF CON
-  attribution for free.
+Built in `bparticle/mosa` (migration 078, `apps/frontend/docs/BADGE-SHIFT.md`):
+
+- **Museum**: `?shift=` is kept at boot and taken out of the address. Once the
+  visitor is in, a Night Shift sheet (the visitor label's paper) shows the rooms
+  swept and the bottles found, each opening its specimen sheet, plus the
+  commemorative when one is offered.
+- **API**: `GET /badge/shift?code=` (public, no database) and `POST /badge/shift`
+  (signed in), which keeps one row per wallet in `badge_shifts` and gives
+  `BADGE_SHIFT_GIFT=<collection>/<piece>` once through Gifts. Only a free piece
+  can be given, since a code is only a claim (tier 1, [SOLANA.md](SOLANA.md)).
+- **The decoder** is `lib/badgeShift.ts`, mirrored in both MOSA apps, with a
+  copy of this repo's registry. **When `pnpm sync` appends rooms or pieces to
+  `mosa.lock.json`, paste the new registry into both copies there.** A longer
+  code from a newer badge still reads; the extra bottles are ignored until then.
+- Analytics: a row in `badge_shifts` = arrived from a badge.
 
 ### 3. Canonical `/at/room/<roomId>` (both apps, mirrored grammar)
 

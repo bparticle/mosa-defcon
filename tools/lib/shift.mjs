@@ -1,7 +1,7 @@
 // Read a Night Shift report code (the `?shift=` on a badge's report QR).
 //
-// This is the reference decoder for the museum side (docs/MOSA-INTEGRATION.md):
-// copy it into apps/api when the /at/defcon landing learns to read shifts.
+// The reference decoder. The museum's own is lib/badgeShift.ts in bparticle/mosa
+// (both apps), with a copy of the registry (docs/MOSA-INTEGRATION.md §2).
 // Layout, most significant bit first, Crockford base32 lowercase:
 //   4 bits   format (1)
 //   16 bits  rooms visited, by registry index (mosa.lock.json registry.rooms)
