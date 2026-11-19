@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night Shift, local</title>
+<style>
+  :root { --bg: #0b0b0c; --conc: #202020; --ink: #ece8e0; --muted: #848078; --dim: #3a3836; --accent: #7ee8a8; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .04em;
+    display: grid; place-items: center; padding: 16px; }
+  main { display: grid; grid-template-columns: auto 280px; gap: 24px; align-items: start; max-width: 100%; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .badge { background: var(--conc); padding: 18px 18px 14px; box-shadow: 8px 8px 0 #000;
+    background-image: repeating-linear-gradient(180deg, transparent 0 13px, #181818 13px 14px); }
+  .leds { display: flex; justify-content: space-between; margin-bottom: 10px; }
+  .led { width: 14px; height: 14px; background: #111; border: 2px solid #000; }
+  canvas { display: block; width: min(960px, calc(100vw - 100px), calc((100vh - 90px) * 4 / 3)); aspect-ratio: 4 / 3; image-rendering: pixelated; background: #000; }
+  .caption { display: flex; justify-content: space-between; margin-top: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .25em; font-size: 10px; }
+  h1 { font-size: 12px; letter-spacing: .3em; text-transform: uppercase; margin: 0 0 14px; }
+  section { margin-bottom: 20px; }
+  h2 { font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; border-bottom: 2px solid var(--ink); padding-bottom: 4px; }
+  kbd { display: inline-block; background: var(--ink); color: var(--bg); padding: 0 5px; margin-right: 6px; font: inherit; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; margin: 0; }
+  dd { margin: 0; color: var(--muted); }
+  button { font: inherit; letter-spacing: .15em; text-transform: uppercase; background: transparent; color: var(--ink); border: 2px solid var(--ink);
+    padding: 6px 10px; margin: 0 6px 6px 0; cursor: pointer; }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #log { height: 180px; overflow: auto; background: #000; color: var(--muted); padding: 8px; white-space: pre-wrap; font-size: 11px; }
+  #log .err { color: #ff8f8f; }
+  .status { color: var(--muted); }
+  .status.live::before { content: "● "; color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <div class="badge">
+    <div class="leds"><span class="led" id="led0"></span><span class="led" id="led1"></span></div>
+    <canvas id="screen" width="320" height="240" tabindex="0" aria-label="Badge screen"></canvas>
+    <div class="caption"><span>M.O.S.A. Night Shift</span><span id="status" class="status">connecting</span></div>
+  </div>
+  <aside>
+    <h1>Local badge</h1>
+    <section>
+      <h2>Keys</h2>
+      <dl>
+        <dt><kbd>←↑↓→</kbd></dt><dd>Walk, menus</dd>
+        <dt><kbd>Z</kbd><kbd>↵</kbd></dt><dd>SELECT</dd>
+        <dt><kbd>X</kbd><kbd>Esc</kbd></dt><dd>CANCEL</dd>
+        <dt><kbd>M</kbd></dt><dd>Hold to blow into the mics</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Radio</h2>
+      <button id="friend" aria-pressed="false">Janitor nearby</button>
+      <button id="wave">Wave at me</button>
+    </section>
+    <section>
+      <h2>Badge</h2>
+      <button id="relaunch">Relaunch</button>
+      <button id="reset">Clear record</button>
+    </section>
+    <section>
+      <h2>Log</h2>
+      <div id="log" role="log"></div>
+    </section>
+  </aside>
+</main>
+<script>
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(320, 240);
+  const logEl = document.getElementById('log');
+  const status = document.getElementById('status');
+  const post = (path) => fetch(path, { method: 'POST' });
+
+  const es = new EventSource('/events');
+  es.onopen = () => { status.textContent = 'live'; status.classList.add('live'); };
+  es.onerror = () => { status.textContent = 'disconnected'; status.classList.remove('live'); };
+  es.addEventListener('frame', (e) => {
+    const bin = atob(e.data);
+    const px = img.data;
+    for (let i = 0, j = 0; i < bin.length; i += 2, j += 4) {
+      const c = bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8);
+      const r = (c >> 11) & 31, g = (c >> 5) & 63, b = c & 31;
+      px[j] = (r << 3) | (r >> 2); px[j + 1] = (g << 2) | (g >> 4); px[j + 2] = (b << 3) | (b >> 2); px[j + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  });
+  es.addEventListener('leds', (e) => {
+    JSON.parse(e.data).forEach((l, i) => {
+      const el = document.getElementById('led' + i);
+      if (el) el.style.background = `rgb(${l.r},${l.g},${l.b})`;
+    });
+  });
+  es.addEventListener('log', (e) => {
+    const line = JSON.parse(e.data);
+    const div = document.createElement('div');
+    if (line.startsWith('ERROR')) div.className = 'err';
+    div.textContent = line;
+    logEl.append(div);
+    while (logEl.childElementCount > 300) logEl.firstChild.remove();
+    logEl.scrollTop = logEl.scrollHeight;
+  });
+
+  const MAP = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', z: 'a', Z: 'a', Enter: 'a', x: 'b', X: 'b', Escape: 'b', Backspace: 'b' };
+  const held = new Set();
+  addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) return;
+    if (e.key === 'm' || e.key === 'M') { if (!e.repeat) post('/blow?on=1'); return; }
+    const k = MAP[e.key];
+    if (!k) return;
+    e.preventDefault();
+    if (held.has(k)) return;
+    held.add(k);
+    post(`/key?k=${k}&down=1`);
+  });
+  addEventListener('keyup', (e) => {
+    if (e.key === 'm' || e.key === 'M') { post('/blow?on=0'); return; }
+    const k = MAP[e.key];
+    if (!k || !held.has(k)) return;
+    held.delete(k);
+    post(`/key?k=${k}&down=0`);
+  });
+  addEventListener('blur', () => { for (const k of held) post(`/key?k=${k}&down=0`); held.clear(); post('/blow?on=0'); });
+
+  const friend = document.getElementById('friend');
+  friend.onclick = () => {
+    const on = friend.getAttribute('aria-pressed') !== 'true';
+    friend.setAttribute('aria-pressed', String(on));
+    post(`/friend?on=${on ? 1 : 0}`);
+  };
+  document.getElementById('wave').onclick = () => post('/wave');
+  document.getElementById('relaunch').onclick = () => post('/relaunch');
+  document.getElementById('reset').onclick = () => { if (confirm('Clear the shift record on this local badge?')) post('/reset'); };
+  canvas.focus();
+</script>
+</body>
+</html>

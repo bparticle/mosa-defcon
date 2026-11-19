@@ -16,7 +16,7 @@ vendor/solana-badge (submodule) ───── tools/lib/emulator.mjs ► test/
 | `main.lua` | Entry point and scenes (title, lanyard, game, card, plaque, QR, pause, record, map, about), LEDs, lifecycle callbacks |
 | `world.lua` | A room: grid laid out from synced rects, doors, landmarks, bottles, balloons, the flashlight renderer |
 | `qr.lua` | QR encoder: byte mode, ECC M, versions 1–10, incremental mask search |
-| `ui.lua` | MOSA's 2D language on a 6×8 font: tracked labels, wrapping, hints, QR and thumbnail drawing |
+| `ui.lua` | MOSA's 2D language on a 6×8 font: tracked labels, wrapping, key blocks and hints, QR and sprite drawing, and the brutalist kit (board-marked concrete, slabs, block letters, catalogue numbers) |
 | `record.lua` | Persistence in the per-app key/value store; the shift-report code |
 | `net.lua` | ESP-NOW presence and waves |
 | `util.lua` | 32-bit-safe RNG, base32, hex bitsets |
@@ -31,7 +31,7 @@ can be collected.
 
 | Limit | Value | How we stay inside |
 | --- | --- | --- |
-| Store script size | 96 KB | `pnpm build` fails above it. Currently ~83 KB; most of it is data (thumbnails ~16 KB RLE) |
+| Store script size | 96 KB | `pnpm build` fails above it. Currently ~83 KB; most of it is data (bottle sprites ~10 KB RLE) |
 | Lua heap | 1 MB | Only the current room is laid out (`Room:suspend/resume`); QR modules are strings, not tables; thumbnails draw from RLE with no cache. A test fails above 640 KB in the emulator, whose 64-bit Lua costs about twice the badge's 32-bit build per table slot |
 | Per-callback time | 250 ms | Room layout runs as a coroutine, a band of rows per frame behind a "threshold" screen. QR masks are tried one per frame. The record grid paints 12 thumbnails per frame |
 | `on_start` | 5 s | Loads data and the record, starts ESP-NOW. Nothing else |
@@ -69,6 +69,10 @@ deterministic randomness. Screenshots are the framebuffer, pixel for pixel.
 
 Bumping the submodule (`git -C vendor/solana-badge pull`, commit the new
 pointer) and running `pnpm test` is how we find out what an SDK change broke.
+
+`pnpm play` (`tools/play/`) runs the same headless badge in real time behind a
+small HTTP server: frames go to the page over server-sent events, buttons come
+back as POSTs (held at least 70 ms, since the badge debounces for 25 ms).
 
 `mosa_debug` (end of `main.lua`) is a small global test seam: scene state,
 teleporting to a bottle, travelling synchronously. Harmless on hardware.

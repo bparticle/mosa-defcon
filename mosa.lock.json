@@ -14,7 +14,11 @@
     "links": "0b0214b32182af0e"
   },
   "rooms": "d8ab158eca69d5a4",
-  "data": "38243503a8b7a901",
+  "data": "e237434a22832eaa",
+  "pixel": {
+    "hand": [],
+    "auto": 41
+  },
   "registry": {
     "rooms": [
       "room0",

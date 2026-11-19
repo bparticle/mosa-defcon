@@ -15,7 +15,7 @@ The badge never hand-copies museum content. `pnpm sync` derives everything:
 | Landmarks | `vitrines`, `flapboards`, `postcardwalls`, `dispensers`, `vendors`, `entrances` | New furniture kinds need a plaque text in `src/main.lua` (`PLAQUES`); unknown kinds still show, with a generic plaque |
 | Room stamps | `apps/frontend/public/rooms/<id>.programme.json` goals | The badge awards `visit`, `pop-all-balloons`, `discover-room`. Other goal types are logged by the sync and skipped, never approximated |
 | Bottles, tiers, artists | `GET /finds/catalog` (live API) | Rarity weights and hunt rooms come from the catalogue, so a re-tuned hunt re-tunes the badge on the next sync |
-| Thumbnails | `GET /finds/media/<c>/<p>/cover` | Shrunk to 16×24, 15 colours, run-length encoded |
+| Sprites | `GET /finds/media/<c>/<p>/cover`, or hand art in `art/pixel/` | Pixelized to 16×24, 7 colours, unless a hand-made sprite exists ([PIXEL-ART.md](PIXEL-ART.md)); run-length encoded |
 | Partner and room links | `GET /links` | Only enabled, unscheduled links |
 | Every QR URL | `apps/frontend/src/lib/linkPaths.ts` `parseLinkPath` | The sync **fails** if MOSA's own parser rejects a URL |
 

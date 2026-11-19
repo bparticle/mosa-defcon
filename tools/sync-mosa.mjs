@@ -21,7 +21,10 @@
 //     GET /finds/catalog                        collections, pieces, tiers, where
 //                                               each collection hunts
 //     GET /links                                curated /at/<slug> links
-//     GET /finds/media/<c>/<p>/cover            renders, shrunk to badge thumbnails
+//     GET /finds/media/<c>/<p>/cover            renders, pixelized to badge sprites
+//   This repo
+//     art/pixel/<collection>/<piece>.png        hand-made 16x24 pixel art, which
+//                                               replaces the pixelized cover
 //
 // Outputs (both committed):
 //   src/data/mosa_data.lua   the generated Lua module the app requires
@@ -36,7 +39,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import sharp from 'sharp';
+import { pixelize, validateSprite, encode } from './lib/pixel.mjs';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
 const args = process.argv.slice(2);
@@ -51,6 +54,7 @@ const SITE = opt('site', process.env.MOSA_SITE ?? 'https://mosa.center').replace
 const LOCK_PATH = path.join(ROOT, 'mosa.lock.json');
 const DATA_PATH = path.join(ROOT, 'src', 'data', 'mosa_data.lua');
 const THUMB_CACHE = path.join(ROOT, '.cache', 'thumbs');
+const PIXEL_DIR = path.join(ROOT, 'art', 'pixel');
 
 /** Bump when the shape of mosa_data.lua changes; the app refuses a mismatch. */
 export const DATA_SCHEMA = 1;
@@ -61,7 +65,8 @@ const MIN_SHORT_TILES = 8; // a room's short axis gets at least this many tiles�
 const HARD_MAX_TILES = 100;// …unless that would make the long axis longer than this
 const MIN_TILE_M = 1.5;    // never finer than this many metres per tile
 const MAX_TILE_M = 8;
-const THUMB_W = 16, THUMB_H = 24, THUMB_COLOURS = 15;
+const THUMB_W = 16, THUMB_H = 24;
+const AUTO_COLOURS = 7;   // pixelized covers: fewer colours read better at 16x24
 
 /** The badge font is 6x8 ASCII: fold accents and typographic quotes, drop the rest. */
 const ascii = (s) => String(s ?? '')
@@ -177,78 +182,29 @@ function roomPlan(room, allPortals) {
   return { m, ox, oz, w, h, rects, doors, marks, floorTiles: floor.size };
 }
 
-// ── thumbnails ───────────────────────────────────────────────────────────────
+// ── sprites ──────────────────────────────────────────────────────────────────
 
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-const rgb565 = (r, g, b) => ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-
-function quantize(pixels, k) {
-  // pixels: [[r,g,b], ...] opaque only. Tiny k-means seeded by frequency.
-  const freq = new Map();
-  for (const p of pixels) {
-    const key = ((p[0] >> 4) << 8) | ((p[1] >> 4) << 4) | (p[2] >> 4);
-    freq.set(key, (freq.get(key) ?? 0) + 1);
-  }
-  let centres = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, k)
-    .map(([key]) => [((key >> 8) & 15) * 17, ((key >> 4) & 15) * 17, (key & 15) * 17]);
-  const nearest = (p) => {
-    let bi = 0, bd = Infinity;
-    centres.forEach((c, i) => {
-      const d = (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2;
-      if (d < bd) { bd = d; bi = i; }
-    });
-    return bi;
-  };
-  for (let iter = 0; iter < 10; iter++) {
-    const acc = centres.map(() => [0, 0, 0, 0]);
-    for (const p of pixels) { const a = acc[nearest(p)]; a[0] += p[0]; a[1] += p[1]; a[2] += p[2]; a[3]++; }
-    centres = centres.map((c, i) => (acc[i][3] ? acc[i].slice(0, 3).map((v) => Math.round(v / acc[i][3])) : c));
-  }
-  return { centres, nearest };
-}
-
-async function thumbnail(collection, piece, etag) {
+/** The cover render, cached by its content version. */
+async function cover(collection, piece, etag) {
   fs.mkdirSync(THUMB_CACHE, { recursive: true });
   const cacheFile = path.join(THUMB_CACHE, `${collection}--${piece}--${etag || 'x'}.png`);
-  let buf;
-  if (fs.existsSync(cacheFile)) buf = fs.readFileSync(cacheFile);
-  else {
-    const res = await fetch(`${API}/finds/media/${collection}/${piece}/cover`);
-    if (!res.ok) throw new Error(`cover ${collection}/${piece}: HTTP ${res.status}`);
-    buf = Buffer.from(await res.arrayBuffer());
-    fs.writeFileSync(cacheFile, buf);
+  if (fs.existsSync(cacheFile)) return fs.readFileSync(cacheFile);
+  const res = await fetch(`${API}/finds/media/${collection}/${piece}/cover`);
+  if (!res.ok) throw new Error(`cover ${collection}/${piece}: HTTP ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  fs.writeFileSync(cacheFile, buf);
+  return buf;
+}
+
+/** A piece's badge sprite: hand art if there is any (held to the rules), else the pixelized cover. */
+async function sprite(collection, piece, etag) {
+  const hand = path.join(PIXEL_DIR, collection, `${piece}.png`);
+  if (fs.existsSync(hand)) {
+    const { sprite: sp, errors } = await validateSprite(fs.readFileSync(hand));
+    if (errors) throw new Error(`art/pixel/${collection}/${piece}.png ${errors.join('; ')}`);
+    return { ...encode(sp), hand: true };
   }
-  const { data } = await sharp(buf)
-    .ensureAlpha()
-    .trim({ threshold: 1 })
-    .resize(THUMB_W, THUMB_H, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 }, kernel: 'lanczos3' })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const opaque = [];
-  for (let i = 0; i < THUMB_W * THUMB_H; i++) if (data[i * 4 + 3] >= 110) opaque.push([data[i * 4], data[i * 4 + 1], data[i * 4 + 2]]);
-  const { centres, nearest } = quantize(opaque, THUMB_COLOURS);
-  // Run-length pairs: <count-1 in base64 alphabet><palette index in hex, 0 = clear>,
-  // scanning row by row. The badge draws each run as one rect, with no decode cache.
-  const idx = [];
-  let sum = [0, 0, 0];
-  for (let i = 0; i < THUMB_W * THUMB_H; i++) {
-    if (data[i * 4 + 3] < 110) { idx.push(0); continue; }
-    const p = [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]];
-    idx.push(nearest(p) + 1);
-    sum = sum.map((v, c) => v + p[c]);
-  }
-  let rle = '';
-  for (let i = 0; i < idx.length;) {
-    let n = 1;
-    while (i + n < idx.length && idx[i + n] === idx[i] && n < 64) n++;
-    rle += B64[n - 1] + idx[i].toString(16);
-    i += n;
-  }
-  const pal = centres.map((c) => rgb565(...c).toString(16).padStart(4, '0')).join('');
-  const n = Math.max(1, opaque.length);
-  // The glint colour on the map: the piece's average, lifted so it reads in the dark.
-  const avg = sum.map((v) => Math.min(255, Math.round((v / n) * 1.25 + 30)));
-  return { pal, rle, tint: rgb565(...avg) };
+  return { ...encode(await pixelize(await cover(collection, piece, etag), { colours: AUTO_COLOURS })), hand: false };
 }
 
 // ── Lua emitter ──────────────────────────────────────────────────────────────
@@ -377,13 +333,18 @@ async function main() {
 
   // Pieces: every catalogue variation, with a thumbnail and its canonical link.
   const pieces = [];
+  const hand = [];
   for (const c of catalog.collections) {
     for (const p of c.pieces) {
       const key = `${c.slug}/${p.id}`;
       if (!registry.pieces.includes(key)) registry.pieces.push(key);
       const etag = /[?&]v=([0-9a-f]+)/.exec(p.cover ?? '')?.[1] ?? '';
       let thumb = null;
-      try { thumb = await thumbnail(c.slug, p.id, etag); } catch (e) { log(`thumbnail skipped for ${key}: ${e.message}`); }
+      try { thumb = await sprite(c.slug, p.id, etag); } catch (e) {
+        if (e.message.startsWith('art/pixel/')) throw e; // broken hand art fails the sync
+        log(`sprite skipped for ${key}: ${e.message}`);
+      }
+      if (thumb?.hand) hand.push(key);
       pieces.push({
         idx: registry.pieces.indexOf(key),
         c: c.slug,
@@ -439,6 +400,7 @@ async function main() {
     api: { url: API, catalog: catalogHash, links: linksHash },
     rooms: roomsHash,
     data: sha(text),
+    pixel: { hand: hand.sort(), auto: pieces.length - hand.length },
     registry,
   };
 
@@ -456,6 +418,7 @@ async function main() {
   fs.mkdirSync(path.dirname(DATA_PATH), { recursive: true });
   fs.writeFileSync(DATA_PATH, text);
   fs.writeFileSync(LOCK_PATH, JSON.stringify(nextLock, null, 2) + '\n');
+  log(`pixel art: ${hand.length} of ${pieces.length} bottles hand-made (art/pixel/), the rest pixelized from their covers`);
   log(`wrote ${path.relative(ROOT, DATA_PATH)} (${(text.length / 1024).toFixed(1)} KB): ${rooms.length} rooms, ${pieces.length} pieces, MOSA ${source.describe}`);
 }
 

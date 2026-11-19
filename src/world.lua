@@ -21,6 +21,8 @@ local FLOOR_C = { [0] = g.color(20, 20, 20), g.color(36, 35, 34), g.color(60, 58
 local WALL_C = { [0] = g.color(38, 38, 38), g.color(84, 82, 79), g.color(150, 147, 141), g.color(226, 222, 213) }
 local MARK_C = { [0] = g.color(28, 28, 30), g.color(48, 50, 52), g.color(78, 82, 86), g.color(120, 126, 132) }
 local SEAM_C = g.color(14, 14, 14)
+-- The south face of a wall, so walls stand up off the floor like cast slabs.
+local FACE_C = { [0] = g.color(26, 26, 26), g.color(54, 53, 51), g.color(98, 96, 92), g.color(158, 155, 148) }
 
 local Room = {}
 Room.__index = Room
@@ -292,6 +294,9 @@ function Room:draw(px, py, fx, fy, t)
           local sx = x * TILE - cx
           if c == WALL then
             g.fill_rect(sx, sy, TILE, TILE, WALL_C[l])
+            if l >= 2 then g.line(sx, sy + 4, sx + TILE - 1, sy + 4, FACE_C[l]) end -- board marks
+            local below = self.cells[i + w]
+            if below and below ~= WALL then g.fill_rect(sx, sy + TILE - 5, TILE, 5, FACE_C[l]) end
           else
             g.fill_rect(sx, sy, TILE, TILE, FLOOR_C[l])
             if l >= 2 and y % 3 == 0 then g.line(sx, sy, sx + TILE - 1, sy, SEAM_C) end -- concrete pour seams

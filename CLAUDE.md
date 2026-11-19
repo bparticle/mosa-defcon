@@ -33,7 +33,12 @@ Read `README.md`, then `docs/ARCHITECTURE.md` before changing `src/`.
 ```bash
 pnpm sync      # needs ../mosa or --mosa <path>
 pnpm build && pnpm test && pnpm preview
+pnpm play      # the built app in a browser, on the emulator
+pnpm pixel check
 ```
+
+Hand-made bottle sprites live in `art/pixel/` (rules in `docs/PIXEL-ART.md`);
+they are source art, not generated, and the sync validates them.
 
 The tests run the real Solana OS emulator from `vendor/solana-badge` (git
 submodule) through `tools/lib/emulator.mjs`; `node --import ./tools/lib/register.mjs`

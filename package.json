@@ -4,7 +4,9 @@
   "private": true,
   "description": "M.O.S.A. on the Solana DEF CON badge: Night Shift, a top-down janitor's walk through the Museum of Sirius Art that hands visitors into the HD museum.",
   "type": "module",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "packageManager": "pnpm@12.15.0",
   "scripts": {
     "sync": "node tools/sync-mosa.mjs",
@@ -12,7 +14,9 @@
     "check": "node tools/bundle.mjs --check",
     "test": "node --import ./tools/lib/register.mjs --test --test-reporter=spec \"test/*.test.mjs\"",
     "preview": "node --import ./tools/lib/register.mjs tools/preview.mjs",
-    "version": "node tools/bundle.mjs && git add scripts apps CHANGELOG.md"
+    "version": "node tools/bundle.mjs && git add scripts apps CHANGELOG.md",
+    "pixel": "node tools/pixel.mjs",
+    "play": "node --import ./tools/lib/register.mjs tools/play/server.mjs"
   },
   "devDependencies": {
     "@noble/ed25519": "^3.1.0",
@@ -23,5 +27,9 @@
     "sharp": "^0.34.4",
     "upng-js": "^2.1.0",
     "wasmoon": "^1.16.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bparticle/mosa-defcon.git"
   }
 }

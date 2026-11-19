@@ -18,12 +18,17 @@ export async function bootApp(options = {}) {
   badge.install('mosa', Object.fromEntries(fs.readdirSync(dir).map((f) => [f, fs.readFileSync(path.join(dir, f))])));
   await badge.launch('mosa');
   await badge.frames(3);
+  // The splash skips on any button; most callers want the title.
+  if (!options.splash) { await badge.press('b'); await badge.frames(2); }
   return badge;
 }
 
 const state = (b) => String(b.lua('return mosa_debug.state()'));
 
 async function main() {
+  const s = await bootApp({ splash: true });
+  await s.frames(30); s.screenshot(path.join(OUT, '00-splash-pour.png'), 2);
+  await s.frames(55); s.screenshot(path.join(OUT, '00-splash.png'), 2);
   const b = await bootApp();
   const shots = [];
   const shot = async (name) => {

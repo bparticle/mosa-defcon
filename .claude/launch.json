@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "play", "runtimeExecutable": "pnpm", "runtimeArgs": ["play"], "port": 5317 }
+  ]
+}

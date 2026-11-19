@@ -71,23 +71,112 @@ function ui.fit(s, width, size)
   return s:sub(1, math.max(1, per - 1)) .. "~"
 end
 
---- The bottom hint line: "SELECT  pick up   CANCEL  back".
-function ui.hints(list, y, col)
+--- A button as MOSA prints it on a plaque: an inverted block.
+function ui.key(name, x, y, paper)
+  local label = badge.input.label(name)
+  local w = #label * 6 + 6
+  g.fill_rect(x, y - 2, w, 12, paper and ui.PAPER_INK or ui.INK)
+  g.text(label, x + 3, y, paper and ui.PAPER or ui.BG)
+  return w
+end
+
+--- The bottom hint line: [SELECT] MUSEUM LINK   [CANCEL] BACK.
+function ui.hints(list, y, col, paper)
   y = y or 228
-  local parts = {}
-  for i = 1, #list, 2 do
-    parts[#parts + 1] = { badge.input.label(list[i]), list[i + 1] }
-  end
   local width = 0
-  for _, p in ipairs(parts) do width = width + (#p[1] + #p[2] + 1) * 6 + 14 end
+  for i = 1, #list, 2 do width = width + (#badge.input.label(list[i]) + #list[i + 1]) * 6 + 25 end
   local x = (ui.W - width + 14) // 2
-  for _, p in ipairs(parts) do
-    g.text(p[1], x, y, ui.ACCENT)
-    x = x + #p[1] * 6 + 6
-    g.text(p[2], x, y, col or ui.MUTED)
-    x = x + #p[2] * 6 + 14
+  for i = 1, #list, 2 do
+    x = x + ui.key(list[i], x, y, paper) + 5
+    local word = list[i + 1]:upper()
+    g.text(word, x, y, col or ui.MUTED)
+    x = x + #word * 6 + 14
   end
 end
+
+-- ── brutalism ────────────────────────────────────────────────────────────────
+-- MOSA's rooms are poured concrete. On a 320x240 screen that is: board marks
+-- (the plank lines a timber form leaves), form-tie holes on a grid, slabs with
+-- hard black shadows, and block letters cast from the same grid.
+ui.SHADOW = g.color(0, 0, 0)
+ui.CONC = g.color(32, 32, 32)
+local BOARD, TIE = g.color(24, 24, 24), g.color(16, 16, 16)
+
+--- Board-marked concrete.
+function ui.concrete(x, y, w, h, base, line)
+  g.fill_rect(x, y, w, h, base or ui.CONC)
+  line = line or BOARD
+  local k = 0
+  for yy = y + 6, y + h - 1, 7 do
+    k = k + 1
+    g.line(x, yy, x + w - 1, yy, line)
+    for xx = x + (k * 37) % 71, x + w - 1, 71 do g.line(xx, yy + 1, xx, math.min(yy + 6, y + h - 1), line) end
+  end
+  for yy = y + 17, y + h - 6, 42 do
+    for xx = x + 19, x + w - 4, 40 do g.fill_rect(xx, yy, 2, 2, TIE) end
+  end
+end
+
+--- A slab: a block with a hard shadow, cast down and to the right.
+function ui.slab(x, y, w, h, col, d)
+  d = d or 4
+  g.fill_rect(x + d, y + d, w, h, ui.SHADOW)
+  g.fill_rect(x, y, w, h, col or ui.PAPER)
+end
+
+--- A header band: concrete, a tracked title and a rule.
+function ui.header(title, right)
+  ui.concrete(0, 0, ui.W, 26)
+  ui.tracked(title, 10, 10, ui.INK, 1, 3)
+  if right then g.text_right(right, 310, 10, ui.MUTED) end
+  g.fill_rect(0, 26, ui.W, 2, ui.INK)
+end
+
+-- Block letters, 7 rows each, cast from a grid (1 = concrete).
+local GLYPH = {
+  M = "1100011111011111111111101011110001111000111100011",
+  O = "11111111111101111011110111111111111",
+  S = "11111111111100011111000111111111111",
+  A = "11111111111101111111111111101111011",
+  ["."] = "00000000001111",
+}
+
+function ui.block_width(s, k)
+  local w = 0
+  for i = 1, #s do
+    local bits = GLYPH[s:sub(i, i)]
+    w = w + ((bits and #bits // 7 or 3) + 1) * k
+  end
+  return w - k
+end
+
+--- Draw block letters at cell size k; `shadow` casts them first.
+function ui.block(s, x, y, k, col, shadow)
+  if shadow then ui.block(s, x + k, y + k, k, shadow) end
+  for i = 1, #s do
+    local bits = GLYPH[s:sub(i, i)]
+    if bits then
+      local w = #bits // 7
+      for row = 0, 6 do
+        local run = -1
+        for c = 0, w do
+          local on = c < w and bits:byte(row * w + c + 1) == 49
+          if on and run < 0 then run = c
+          elseif not on and run >= 0 then
+            g.fill_rect(x + run * k, y + row * k, (c - run) * k, k, col)
+            run = -1
+          end
+        end
+      end
+      x = x + (w + 1) * k
+    else
+      x = x + 4 * k
+    end
+  end
+end
+
+--- A catalogue number: NO. 007.
+function ui.no(n) return string.format("NO. %03d", n) end
 
 --- A QR code with its quiet zone, dark on light. Returns the drawn size.
 function ui.qr(code, x, y, scale, dark, light)

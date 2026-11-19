@@ -5,6 +5,25 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+### Added
+- Splash screen at start: the museum is poured in board-marked concrete, then
+  cast in block letters. Any button skips it.
+- Brutalist look across the app: board-marked concrete bands with form-tie
+  holes, slabs with hard black shadows, block-letter logo, catalogue numbers
+  (`NO. 007`) on cards and the title, numbered menus with an inverted
+  selection, buttons printed as inverted key blocks, stamp-style toasts, and
+  walls with a cast south face.
+- Per-bottle pixel art: hand-made sprites in `art/pixel/<collection>/<piece>.png`
+  replace the automatic ones; `pnpm pixel` (`sheet`, `starter`, `import`,
+  `check`) and [docs/PIXEL-ART.md](docs/PIXEL-ART.md).
+- `pnpm play`: play the built app in a browser on the Solana OS emulator,
+  with simulated mics and nearby badges, reloading on every build.
+
+### Changed
+- Automatic bottle sprites are pixelized, not shrunk: background removal, a
+  mode filter per pixel and a 7-colour palette. Crisper, and the data is 8 KB
+  smaller.
+
 ## [0.1.0] - 2026-11-19
 
 First release: **M.O.S.A. Night Shift**.

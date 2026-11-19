@@ -47,8 +47,8 @@ match `src/`.
 
 The App Store reads a repo at any ref:
 
-- `github.com/<owner>/mosa-badge`: the default branch, the latest.
-- `github.com/<owner>/mosa-badge/tree/v0.1.0`: exactly that release. Use this
+- `github.com/bparticle/mosa-defcon`: the default branch, the latest.
+- `github.com/bparticle/mosa-defcon/tree/v0.1.0`: exactly that release. Use this
   at a booth, so a mid-event push to `main` can't change what visitors get.
 
 Over USB or Wi-Fi with the badge's push tool:

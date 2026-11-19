@@ -20,6 +20,18 @@ test('boots to the title with no errors', async () => {
   assert.ok(b.logs.some((l) => l.includes(`MOSA ${lock.mosa.commit.slice(0, 12)}`)), 'logs the MOSA commit it was built from');
 });
 
+test('opens on the splash, which skips on a button or hands over to the title by itself', async () => {
+  const b = await bootApp({ splash: true });
+  assert.match(state(b), /scene=splash/);
+  await b.press('a');
+  assert.match(state(b), /scene=title/);
+  assert.match(state(b), /depth=1/, 'the skip press does not also choose a menu item');
+  const c = await bootApp({ splash: true });
+  await c.frames(120);
+  assert.match(state(c), /scene=title/);
+  assert.deepEqual([...b.errors, ...c.errors], []);
+});
+
 test('every room can be entered and drawn, within the heap budget', async () => {
   const b = await bootApp();
   await b.press('a'); await b.frames(4);
