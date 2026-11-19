@@ -9,7 +9,7 @@ There are two sources, and the sync picks one per bottle:
 | Source | Where | When |
 | --- | --- | --- |
 | **Hand-made** | `art/pixel/<collection>/<piece>.png` | If the file exists, it's used exactly as drawn. |
-| **Automatic** | the piece's cover render from the MOSA API | Fallback. Background removed, a mode filter per pixel, 7 colours, despeckled. |
+| **Automatic** | the piece's cover render from the MOSA API | Fallback. Background removed, stood upright, a mode filter per pixel, 7 colours, despeckled. |
 
 `docs/pixel-sheet.png` (`pnpm pixel sheet`) shows every bottle's cover next to
 its badge sprite, marked HAND or AUTO. Hand-made art is how a bottle goes from
@@ -28,6 +28,13 @@ its badge sprite, marked HAND or AUTO. Hand-made art is how a bottle goes from
 sprite breaks a rule, so a bad file can't reach a badge.
 
 Tips that matter at this size:
+- **Bottles stand straight.** The cover renders lean about 5° in the frame, like
+  the static posters. At 16×24 that lean is a staircase down every edge and
+  smears the label, so the automatic sprites are stood upright before they are
+  snapped to the grid (`pixelize` in `tools/lib/pixel.mjs`; shapes with no long
+  axis, like a face or an hourglass, are left as drawn). Draw hand art
+  upright too: vertical sides, cap and neck centred over the body. Imported
+  images are straightened the same way.
 - **The silhouette is the identity.** The record shows unfound bottles as flat
   plaster casts of their shape, so the outline alone should still say "this one".
 - One idea per bottle: the label's main colour block and one motif. A face, a

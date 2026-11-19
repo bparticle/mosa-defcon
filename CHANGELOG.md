@@ -40,6 +40,10 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 - Automatic bottle sprites are pixelized, not shrunk: background removal, a
   mode filter per pixel and a 7-colour palette. Crisper, and the data is 8 KB
   smaller.
+- Bottle sprites stand upright. The cover renders lean about 5° like the static
+  posters, which turned every edge into a staircase at 16×24; the sync now
+  straightens each bottle before snapping it to the grid (38 of 41; round
+  shapes with no long axis are left as drawn).
 
 ### Removed
 - Blowing into the badge to pop balloons: this badge has no microphones.

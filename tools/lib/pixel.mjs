@@ -40,7 +40,7 @@ export function quantize(pixels, k) {
 }
 
 /** Clear the background of an image with no alpha: flood from the corners. */
-function clearBackground(data, w, h) {
+export function clearBackground(data, w, h) {
   const at = (x, y) => (y * w + x) * 4;
   const corners = [at(0, 0), at(w - 1, 0), at(0, h - 1), at(w - 1, h - 1)];
   if (corners.some((i) => data[i + 3] < 128)) return; // it already has alpha
@@ -64,10 +64,74 @@ function clearBackground(data, w, h) {
   }
 }
 
+// A cover is a 3D render with the bottle leaning in the frame, like the static
+// posters. At 16x24 that lean turns every edge into a staircase and smears the
+// label, so the sprite stands the bottle up first. Shapes with no clear long axis
+// (a goblet, an hourglass, a face) and extreme leans are left as drawn.
+const MAX_LEAN = 35;       // degrees: more than this is a pose, not a lean
+const MIN_ELONGATION = 2;  // long-axis spread over short-axis spread (std dev ratio)
+
+/**
+ * The subject's long axis, from the opaque pixels' second moments:
+ * { cx, cy, lean, elongation }. `lean` is in degrees from vertical, positive
+ * when the bottle's top is to the left of its base (the way the covers lean).
+ */
+export function shapeAxis(data, w, h) {
+  let n = 0, sx = 0, sy = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] < 128) continue;
+      n++; sx += x; sy += y;
+    }
+  }
+  if (!n) return { cx: 0, cy: 0, lean: 0, elongation: 1 };
+  const cx = sx / n, cy = sy / n;
+  let mxx = 0, myy = 0, mxy = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] < 128) continue;
+      const dx = x - cx, dy = y - cy;
+      mxx += dx * dx; myy += dy * dy; mxy += dx * dy;
+    }
+  }
+  const half = (mxx + myy) / 2, spread = Math.hypot((mxx - myy) / 2, mxy);
+  const elongation = Math.sqrt((half + spread) / Math.max(1e-9, half - spread));
+  const phi = 0.5 * Math.atan2(2 * mxy, mxx - myy); // long axis, from the x axis (y points down)
+  let lean = (Math.PI / 2 - phi) * (180 / Math.PI);  // from vertical
+  lean = ((lean + 90) % 180 + 180) % 180 - 90;       // fold to (-90, 90]
+  return { cx, cy, lean, elongation };
+}
+
+/** Rotate the subject upright about its centroid (nearest neighbour: the cells are 8 px, no need to smooth). */
+function standUp(data, w, h, { cx, cy, lean }) {
+  const t = (lean * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
+  const D = Math.ceil(Math.hypot(w, h));
+  const out = Buffer.alloc(D * D * 4);
+  // Keep the cover's own backdrop colour under the clear pixels, so trim() sees what it always saw.
+  for (let i = 0; i < D * D; i++) { out[i * 4] = data[0]; out[i * 4 + 1] = data[1]; out[i * 4 + 2] = data[2]; }
+  for (let oy = 0; oy < D; oy++) {
+    for (let ox = 0; ox < D; ox++) {
+      const u = ox - D / 2, v = oy - D / 2;
+      const x = Math.round(cx + c * u + s * v), y = Math.round(cy - s * u + c * v);
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 128) continue;
+      data.copy(out, (oy * D + ox) * 4, i, i + 4);
+    }
+  }
+  return { data: out, info: { width: D, height: D, channels: 4 } };
+}
+
 /** Any image → { idx: Uint8Array(W*H) with 0 = clear, centres: [[r,g,b]...] }. */
-export async function pixelize(buf, { colours = 7 } = {}) {
-  const big = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+export async function pixelize(buf, { colours = 7, upright = true } = {}) {
+  let big = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   clearBackground(big.data, big.info.width, big.info.height);
+  if (upright) {
+    const axis = shapeAxis(big.data, big.info.width, big.info.height);
+    if (axis.elongation >= MIN_ELONGATION && Math.abs(axis.lean) >= 1 && Math.abs(axis.lean) <= MAX_LEAN) {
+      big = standUp(big.data, big.info.width, big.info.height, axis);
+    }
+  }
   const { data } = await sharp(big.data, { raw: big.info })
     .trim({ threshold: 1 })
     .resize(W * CELL, H * CELL, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 }, kernel: 'mitchell' })
