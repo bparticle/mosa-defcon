@@ -5,6 +5,10 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-19
+
+Night Shift on Solana OS, the Breakpoint 2026 badge, and in its App Store.
+
 ### Added
 - Splash screen at start: the museum is poured in board-marked concrete, then
   cast in block letters. Any button skips it.
@@ -51,6 +55,8 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 - The Lua QR encoder, `scripts/mosa.lua`, and the `vendor/solana-badge`
   submodule with its emulator.
 
+Data: MOSA `2907085`, data schema 1, Solana OS 2.4 (Lua 5.5).
+
 ## [0.1.0] - 2026-11-19
 
 First release: **M.O.S.A. Night Shift**.
@@ -79,5 +85,6 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.1.0...HEAD
+[Unreleased]: ../../compare/v0.2.0...HEAD
+[0.2.0]: ../../compare/v0.1.0...v0.2.0
 [0.1.0]: ../../releases/tag/v0.1.0
