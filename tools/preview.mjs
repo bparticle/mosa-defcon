@@ -1,34 +1,34 @@
 #!/usr/bin/env node
 // pnpm preview [outDir]
 //
-// Plays the built app (apps/mosa/) on the headless badge — the real Solana OS
-// emulator from the vendored submodule — and saves a screenshot of every
-// screen to docs/screens/. Re-run after a change to see it without hardware.
+// Plays the built app (apps/mosa/) on the headless Solana OS (tools/lib/host.mjs)
+// and saves a screenshot of every screen to docs/screens/. Re-run after a change
+// to see it without hardware. QR codes show as placeholders here; the real ones
+// are drawn by Solana OS (see docs/BADGE.md for running the build on the real
+// emulator).
 import fs from 'node:fs';
 import path from 'node:path';
-import { HeadlessBadge } from './lib/emulator.mjs';
+import { SolanaOS } from './lib/host.mjs';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
-const OUT = path.resolve(process.argv[2] ?? path.join(ROOT, 'docs', 'screens'));
-fs.mkdirSync(OUT, { recursive: true });
 
+/** Launch the built app; past the splash unless `splash` is set. */
 export async function bootApp(options = {}) {
-  const badge = await new HeadlessBadge(options).boot();
-  const dir = path.join(ROOT, 'apps', 'mosa');
-  badge.install('mosa', Object.fromEntries(fs.readdirSync(dir).map((f) => [f, fs.readFileSync(path.join(dir, f))])));
-  await badge.launch('mosa');
+  const badge = await new SolanaOS({ dir: path.join(ROOT, 'apps', 'mosa'), ...options }).launch();
   await badge.frames(3);
   // The splash skips on any button; most callers want the title.
-  if (!options.splash) { await badge.press('b'); await badge.frames(2); }
+  if (!options.splash) { await badge.press('a'); await badge.frames(2); }
   return badge;
 }
 
 const state = (b) => String(b.lua('return mosa_debug.state()'));
 
 async function main() {
+  const OUT = path.resolve(process.argv[2] ?? path.join(ROOT, 'docs', 'screens'));
+  fs.mkdirSync(OUT, { recursive: true });
   const s = await bootApp({ splash: true });
   await s.frames(30); s.screenshot(path.join(OUT, '00-splash-pour.png'), 2);
-  await s.frames(55); s.screenshot(path.join(OUT, '00-splash.png'), 2);
+  await s.frames(60); s.screenshot(path.join(OUT, '00-splash.png'), 2);
   const b = await bootApp();
   const shots = [];
   const shot = async (name) => {
@@ -56,7 +56,7 @@ async function main() {
 
   b.lua('mosa_debug.to_bottle()'); await b.frames(4);
   await shot('07-found-card');
-  await b.press('a'); await b.frames(12);
+  await b.press('a'); await b.frames(4);
   await shot('08-museum-link-qr');
   await b.press('b');
 
@@ -64,7 +64,7 @@ async function main() {
   await shot('09-floor1-corridor');
   b.lua('mosa_debug.travel("room4")'); await b.frames(3); await b.hold('right', 20);
   await shot('10-community-gallery');
-  if (String(b.lua('return mosa_debug.near("mark")')) === 'true') {
+  if (b.lua('return mosa_debug.near("mark")') === true) {
     await b.frames(2);
     await b.press('a');
     await shot('11-plaque');
@@ -76,20 +76,20 @@ async function main() {
   await b.press('down'); await b.press('a');
   await shot('13-visitor-map');
   await b.press('b');
-  await b.press('down'); await b.press('a');
+  await b.press('down'); await b.press('a'); await b.frames(6);
   await shot('14-shift-record');
   for (let i = 0; i < 4; i++) await b.press('down');
-  await b.press('a'); await b.frames(12);
+  await b.press('a'); await b.frames(4);
   await shot('15-shift-report-qr');
 
   await b.press('b'); await b.press('b'); await b.press('b');
-  b.espnowIn('aa:bb:cc:dd:ee:01', 'MOSA1 W Pixel_Janitor'); await b.frames(3);
+  b.meshIn('7K2Q9M', { w: '@pixeljanitor' }); await b.frames(3);
   await shot('16-wave-received');
 
   console.log(shots.join('\n'));
   if (b.errors.length) throw new Error(JSON.stringify(b.errors));
 }
 
-if (import.meta.url === `file:///${process.argv[1].replace(/\\/g, '/')}` || process.argv[1].endsWith('preview.mjs')) {
+if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('tools/preview.mjs')) {
   main().catch((e) => { console.error(e); process.exit(1); });
 }

@@ -4,75 +4,98 @@
 mosa (MOSA repo, local checkout) ─┐
 api.mosa.center (public API) ─────┼─ tools/sync-mosa.mjs ─► src/data/mosa_data.lua + mosa.lock.json
                                   │
-src/*.lua ────────────────────────┴─ tools/bundle.mjs ────► scripts/mosa.lua   (App Store: one file)
-                                                            apps/mosa/          (USB/Wi-Fi push)
-vendor/solana-badge (submodule) ───── tools/lib/emulator.mjs ► test/, tools/preview.mjs
+src/*.lua ────────────────────────┴─ tools/bundle.mjs ────► apps/mosa/   (the Solana OS app package)
+                                                                 │
+tools/lib/host.mjs (headless Solana OS) ◄────────────────────────┴─► test/, tools/preview.mjs, tools/play/
 ```
+
+## The app package (`apps/mosa/`)
+
+Solana OS installs an app as a folder: `main.lua` (at most 64 KB), an
+`app.json` manifest, and the modules `main.lua` loads with `require("a.b")`
+(the file `a/b.lua`). A package holds at most 64 files, each at most 256 KB
+and 1 MB in total, with paths in `[a-z0-9_-./]`. `tools/bundle.mjs` copies
+`src/**/*.lua` verbatim, so line numbers in a badge error match `src/`. It adds
+`build_info.lua` and `app.json`, checks every limit, and removes any stale
+files. `pnpm check` fails when the committed package doesn't match `src/`.
+
+The manifest asks for two permissions: `led` and `mesh`.
 
 ## Lua modules (`src/`)
 
 | Module | Job |
 | --- | --- |
-| `main.lua` | Entry point and scenes (title, lanyard, game, card, plaque, QR, pause, record, map, about), LEDs, lifecycle callbacks |
+| `main.lua` | Entry point and scenes (splash, title, lanyard, game, card, plaque, QR, pause, record, map, about), LEDs, the Solana OS callbacks |
 | `world.lua` | A room: grid laid out from synced rects, doors, landmarks, bottles, balloons, the flashlight renderer |
-| `qr.lua` | QR encoder: byte mode, ECC M, versions 1–10, incremental mask search |
-| `ui.lua` | MOSA's 2D language on a 6×8 font: tracked labels, wrapping, key blocks and hints, QR and sprite drawing, and the brutalist kit (board-marked concrete, slabs, block letters, catalogue numbers) |
-| `record.lua` | Persistence in the per-app key/value store; the shift-report code |
-| `net.lua` | ESP-NOW presence and waves |
+| `gfx.lua` | The one full-screen `ui.canvas`, colours, rectangles, lines, text from the font, and the firmware's QR object |
+| `font.lua` | The 6×8 GLCD font (ASCII 32–126) as hex |
+| `kit.lua` | MOSA's 2D language: tracked labels, wrapping, key blocks and hints, sprite drawing, and the brutalist kit (board-marked concrete, slabs, block letters, catalogue numbers). `main.lua` calls it `ui` |
+| `record.lua` | Persistence in the app's storage; the shift-report code |
+| `net.lua` | Presence and waves over the Solana OS mesh |
 | `util.lua` | 32-bit-safe RNG, base32, hex bitsets |
 | `data/mosa_data.lua` | **Generated.** Never edit; run `pnpm sync` |
 
-`require` works both ways: on a badge, the `apps/mosa/` directory install finds
-modules next to `main.lua`; the store's single file has every module in
-`package.preload`, which `main.lua` clears once loaded so the large data loader
-can be collected.
+The firmware draws QR codes itself (`ui.qr`, one at a time). A scene that shows
+one has a `:qr()` method returning `{ text, x, y, size }`, and `draw()` keeps
+the single QR object in step with the top scene.
 
 ## Budgets the badge enforces
 
 | Limit | Value | How we stay inside |
 | --- | --- | --- |
-| Store script size | 96 KB | `pnpm build` fails above it. Currently ~83 KB; most of it is data (bottle sprites ~10 KB RLE) |
-| Lua heap | 1 MB | Only the current room is laid out (`Room:suspend/resume`); QR modules are strings, not tables; thumbnails draw from RLE with no cache. A test fails above 640 KB in the emulator, whose 64-bit Lua costs about twice the badge's 32-bit build per table slot |
-| Per-callback time | 250 ms | Room layout runs as a coroutine, a band of rows per frame behind a "threshold" screen. QR masks are tried one per frame. The record grid paints 12 thumbnails per frame |
-| `on_start` | 5 s | Loads data and the record, starts ESP-NOW. Nothing else |
-| kv keys | 8 chars | `found`, `rooms`, `goals`, `pickups`, `pops`, `shifts`, `mic`, `v` |
-| ESP-NOW payload | 240 B | Presence lines are ~20 B |
+| `main.lua` | 64 KB | `pnpm build` fails above it. Currently ~35 KB; the data module (~27 KB) is a separate file |
+| Lua heap | 6 MB | Only the current room is laid out (`Room:suspend/resume`); thumbnails draw from RLE with no cache. The real emulator reports a peak of ~0.6 MB. A test fails above 640 KB on the host |
+| Instructions per callback | 200 000 | Room layout runs as a coroutine, up to four slices a tick behind a "threshold" screen (peak ~36 000). The record grid paints 12 thumbnails a tick. Canvas pixels cost 1 instruction per 16 |
+| Storage | 16 KB | One key, `record`, ~200 bytes |
+| Mesh | 4 messages/s, 200 B as JSON | A presence every 2.5 s, ~30 B |
+| UI objects | 128 | One canvas and at most one QR |
+
+`on_tick(ms)` runs every 30 ms. Movement uses the elapsed time, never the tick
+count.
 
 ### Static scenes don't repaint
 
-The framebuffer persists between frames. Scenes marked `static` (cards,
+The canvas keeps its pixels between ticks. Scenes marked `static` (cards,
 plaques, QR, pause, record, map, about, lanyard) draw once and then only when
 something changes (`dirty`: a button, a push or pop, a toast, a scene calling
 `invalidate()`). A badge in Lanyard mode spends almost no CPU, which saves
 battery when it's worn all day.
 
-## 32-bit Lua
+## Lua 5.5, 32-bit
 
-The badge's Lua is built with `LUA_32BITS`: integers are int32 and floats are
-single precision. The emulator's Lua (wasmoon) is 64-bit. Rules that keep both
-identical:
+The badge runs Lua 5.5 built with 32-bit numbers: integers are int32
+(`math.maxinteger` is 2147483647) and floats are single precision. The host
+(wasmoon) is Lua 5.4, 64-bit. Rules that keep both identical:
 
 - The RNG masks with `& 0xFFFFFFFF`, which is a no-op on int32 and correct on
   int64. Shifts are logical in both.
-- Bit-level work (QR, base32, bitsets, colours) stays on small integers.
+- Bit-level work (base32, bitsets, colours) stays on small integers.
 - No integer constant over 2^31; no float precision assumptions beyond ~7 digits.
 - No `string.pack` 64-bit formats, no `math.maxinteger` arithmetic.
+- A `for` loop's variables are read-only in Lua 5.5: copy one into a `local`
+  before changing it. A test checks `src/` for this, because the host can't.
+- Canvas coordinates must be integers (`gfx.lua` floors them).
+
+The sandbox has no `io`, `os`, `debug`, `package` or `load`.
 
 ## The headless badge
 
-`tools/lib/emulator.mjs` runs `BadgeCore` from the official virtual badge
-(`vendor/solana-badge/app/src/lib/emulator/worker/worker.ts`) under plain Node,
-using a resolve hook (`tools/lib/resolve-hook.mjs`) so the submodule stays
-untouched. It's the same Lua runtime, SDK shim, sandbox and limits as
-[solanadefcon.com/badge](https://solanadefcon.com/badge/), with a fake clock and
-deterministic randomness. Screenshots are the framebuffer, pixel for pixel.
+`tools/lib/host.mjs` is a small Solana OS in Node: wasmoon runs the built
+package with the same callbacks, the subset of the API Night Shift uses
+(`ui.canvas`, `ui.qr`, `led`, `storage`, `mesh`, `sys`, `badge`, `json`), the
+same sandbox, and the same limits: the instruction budget per callback, storage
+size, mesh rate and size, QR size and text length. It has a fake clock and
+deterministic randomness. Screenshots are its canvas, pixel for pixel; QR codes
+draw as placeholders.
 
-Bumping the submodule (`git -C vendor/solana-badge pull`, commit the new
-pointer) and running `pnpm test` is how we find out what an SDK change broke.
+It is not the firmware. It can't see Lua 5.5 changes, the real fonts or the
+real QR renderer, so a build should also run on the real emulator before a
+release (see [BADGE.md](BADGE.md)).
 
-`pnpm play` (`tools/play/`) runs the same headless badge in real time behind a
-small HTTP server: frames go to the page over server-sent events, buttons come
-back as POSTs (held at least 70 ms, since the badge debounces for 25 ms).
+`pnpm play` (`tools/play/`) runs the same host in real time behind a small HTTP
+server. Frames go to the page as RGB565 over server-sent events, and buttons
+come back as POSTs. The server also lists and serves the package at `/app/`
+with CORS headers, for loading it into the real emulator.
 
 `mosa_debug` (end of `main.lua`) is a small global test seam: scene state,
 teleporting to a bottle, travelling synchronously. Harmless on hardware.

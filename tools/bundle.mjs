@@ -1,101 +1,124 @@
 #!/usr/bin/env node
-// pnpm build          src/*.lua + src/data → scripts/mosa.lua and apps/mosa/
-// pnpm check          rebuild in memory; exit 1 if the committed outputs are stale
+// pnpm build          src/ → apps/mosa/, the Solana OS app folder
+// pnpm check          rebuild in memory; exit 1 if the committed folder is stale
 //
-// Why a bundle: the Solana badge App Store installs ONE .lua file per app from
-// a repo's scripts/ folder (the filename is the app id, the first `--` line is
-// its description, 96 KB max). So every module is folded into package.preload
-// and the store gets a single self-contained script. apps/mosa/ is the same
-// code as a directory, for pushing over USB/Wi-Fi with badge-push.py.
+// A Solana OS app is a folder (vendor/solana-os/docs/LUA_API.md, "The package"):
+// main.lua runs first, app.json is the manifest, and every other file ships
+// with it (our modules, loaded with require). The sources go in as they are,
+// comments included, so an error's line number on the badge is the line in
+// src/: the App Store compiles them, and compiled code runs from flash, so
+// comments cost nothing on a badge. The build adds build_info.lua and app.json.
 //
 // The build is reproducible (no timestamps): `pnpm check` in CI proves the
-// committed scripts/mosa.lua is exactly what src/ produces.
+// committed apps/mosa/ is exactly what src/ produces.
 import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
 const CHECK = process.argv.includes('--check');
-const STORE_LIMIT = 96 * 1024;
+const OUT = 'apps/mosa';
 
-const APP_ID = 'mosa';
-const APP_NAME = 'M.O.S.A. Night Shift';
-const DESCRIPTION = 'M.O.S.A. Night Shift: walk the museum after hours, find the bottles, scan into the HD museum.';
-
-// Dependency order; main last.
-const MODULES = ['util', 'qr', 'ui', 'world', 'record', 'net', 'data.mosa_data', 'build_info'];
+// Solana OS limits (LUA_API.md, "The package" and "Limits").
+const MAIN_LIMIT = 64 * 1024;
+const FILE_LIMIT = 256 * 1024;
+const TOTAL_LIMIT = 1024 * 1024;
+const MAX_FILES = 64;
+const PATH_OK = /^(?!.*(?:^|\/)\.)(?!.*\.(?:\/|$))[a-z0-9_\-./]{1,64}$/;
 
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'mosa.lock.json'), 'utf8'));
 const repo = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url ?? '';
 
-function source(mod) {
-  if (mod === 'build_info') {
-    return `return { version = ${JSON.stringify(pkg.version)}, mosa = ${JSON.stringify(lock.mosa.commit.slice(0, 12))}, data = ${JSON.stringify(lock.data)}, repo = ${JSON.stringify(repo)} }\n`;
-  }
-  const file = path.join(ROOT, 'src', ...mod.split('.')) + '.lua';
-  return fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
-}
+const MANIFEST = {
+  id: 'mosa-night-shift',
+  name: 'M.O.S.A. Night Shift',
+  version: pkg.version,
+  author: 'Sirius Crocodile',
+  summary: 'Walk the Museum of Sirius Art after hours, find the bottles, scan into the HD museum.',
+  icon: 'eye',
+  accent: '7EE8A8',
+  category: 'games',
+  permissions: ['led', 'mesh'],
+};
 
-/** Drop full-line comments, indentation and blank lines. Safe because src/ has no long strings. */
-function strip(text, name) {
-  if (/\[=*\[/.test(text.replace(/"(?:[^"\\]|\\.)*"/g, '""'))) {
-    throw new Error(`${name}: long strings/comments ([[ ]]) are not allowed in src/ (the bundler strips by line)`);
-  }
-  return text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l !== '' && !(l.startsWith('--') && !l.startsWith('--[')))
-    .join('\n');
+function sources() {
+  const out = {};
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(path.join(ROOT, 'src', dir), { withFileTypes: true })) {
+      const rel = dir ? `${dir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(rel);
+      else if (rel.endsWith('.lua')) out[rel] = fs.readFileSync(path.join(ROOT, 'src', rel), 'utf8').replace(/\r\n/g, '\n');
+    }
+  };
+  walk('');
+  return out;
 }
 
 function build() {
-  const parts = [
-    `-- ${DESCRIPTION}`,
-    `-- v${pkg.version} · MOSA ${lock.mosa.describe} · data ${lock.data}${repo ? ` · ${repo.replace(/^git\+/, '').replace(/\.git$/, '')}` : ''}`,
-    '-- Built by tools/bundle.mjs from src/. Edit the sources, not this file.',
-  ];
-  for (const mod of MODULES) {
-    parts.push(`package.preload[${JSON.stringify(mod)}] = function(...)`, strip(source(mod), mod), 'end');
+  const files = sources();
+  for (const [rel, text] of Object.entries(files)) {
+    if (/\[=*\[/.test(text.replace(/"(?:[^"\\]|\\.)*"/g, '""'))) {
+      throw new Error(`src/${rel}: long strings/comments ([[ ]]) are not allowed in src/`);
+    }
   }
-  parts.push(strip(source('main'), 'main'));
-  const script = parts.join('\n') + '\n';
-  const ini = [
-    `name=${APP_NAME}`,
-    `version=${pkg.version}`,
-    'author=Sirius Crocodile / M.O.S.A.',
-    `description=${DESCRIPTION}`,
-    'entry=main.lua',
-    '',
-  ].join('\n');
-  return {
-    [`scripts/${APP_ID}.lua`]: script,
-    [`apps/${APP_ID}/main.lua`]: script,
-    [`apps/${APP_ID}/app.ini`]: ini,
-  };
+  files['build_info.lua'] =
+    `-- Written by tools/bundle.mjs. v${pkg.version}, MOSA ${lock.mosa.describe}, data ${lock.data}.\n` +
+    `return { version = ${JSON.stringify(pkg.version)}, mosa = ${JSON.stringify(lock.mosa.commit.slice(0, 12))}, data = ${JSON.stringify(lock.data)}, repo = ${JSON.stringify(repo.replace(/^git\+/, '').replace(/\.git$/, ''))} }\n`;
+  files['app.json'] = JSON.stringify(MANIFEST, null, 2) + '\n';
+  return Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)).map(([rel, text]) => [`${OUT}/${rel}`, text]));
+}
+
+function validate(outputs) {
+  const problems = [];
+  const bundled = Object.entries(outputs).filter(([rel]) => !/\/(main\.lua|app\.json)$/.test(rel));
+  const bytes = (t) => Buffer.byteLength(t);
+  const main = bytes(outputs[`${OUT}/main.lua`]);
+  if (main > MAIN_LIMIT) problems.push(`main.lua is ${main} bytes, over ${MAIN_LIMIT}`);
+  if (bundled.length > MAX_FILES) problems.push(`${bundled.length} bundled files, over ${MAX_FILES}`);
+  let total = 0;
+  for (const [rel, text] of bundled) {
+    const name = rel.slice(OUT.length + 1);
+    total += bytes(text);
+    if (bytes(text) > FILE_LIMIT) problems.push(`${name} is over ${FILE_LIMIT} bytes`);
+    if (!PATH_OK.test(name) || name.split('/').length > 5) problems.push(`${name}: not a path Solana OS accepts`);
+  }
+  if (total > TOTAL_LIMIT) problems.push(`bundled files are ${total} bytes together, over ${TOTAL_LIMIT}`);
+  if (!/^[a-z0-9-]{3,24}$/.test(MANIFEST.id)) problems.push(`app id ${MANIFEST.id}`);
+  if (MANIFEST.name.length > 20) problems.push(`app name is over 20 characters`);
+  return { problems, main, total };
 }
 
 const outputs = build();
-const size = Buffer.byteLength(outputs[`scripts/${APP_ID}.lua`]);
-if (size > STORE_LIMIT) {
-  console.error(`[build] scripts/${APP_ID}.lua is ${size} bytes, over the store's ${STORE_LIMIT}-byte limit`);
+const { problems, main, total } = validate(outputs);
+if (problems.length) {
+  console.error(`[build] ${problems.join('; ')}`);
   process.exit(1);
 }
+const summary = `main.lua ${(main / 1024).toFixed(1)} of ${MAIN_LIMIT / 1024} KB, ${Object.keys(outputs).length - 2} modules ${(total / 1024).toFixed(1)} KB, v${pkg.version}`;
+
+const existing = fs.existsSync(path.join(ROOT, OUT))
+  ? fs.readdirSync(path.join(ROOT, OUT), { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => path.relative(ROOT, path.join(e.parentPath ?? e.path, e.name)).replace(/\\/g, '/'))
+  : [];
+const extra = existing.filter((rel) => !(rel in outputs));
 
 if (CHECK) {
   const stale = Object.entries(outputs).filter(([rel, text]) => {
     const p = path.join(ROOT, rel);
-    return !fs.existsSync(p) || fs.readFileSync(p, 'utf8') !== text;
-  });
-  if (stale.length) {
-    console.error(`[build] stale: ${stale.map(([r]) => r).join(', ')}. Run \`pnpm build\` and commit.`);
+    return !fs.existsSync(p) || fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n') !== text;
+  }).map(([r]) => r);
+  if (stale.length || extra.length) {
+    console.error(`[build] stale: ${[...stale, ...extra].join(', ')}. Run \`pnpm build\` and commit.`);
     process.exit(1);
   }
-  console.error(`[build] up to date (${(size / 1024).toFixed(1)} KB of ${STORE_LIMIT / 1024} KB)`);
+  console.error(`[build] up to date (${summary})`);
 } else {
+  for (const rel of extra) fs.rmSync(path.join(ROOT, rel));
   for (const [rel, text] of Object.entries(outputs)) {
     const p = path.join(ROOT, rel);
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, text);
   }
-  console.error(`[build] scripts/${APP_ID}.lua ${(size / 1024).toFixed(1)} KB of ${STORE_LIMIT / 1024} KB (${Math.round((size / STORE_LIMIT) * 100)}%), v${pkg.version}`);
+  console.error(`[build] ${OUT}/: ${summary}`);
 }

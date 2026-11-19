@@ -7,8 +7,8 @@
 --
 -- Rendering is a flashlight: a small pool of light around the janitor and a
 -- cone ahead of them. Tiles once seen stay faintly remembered.
-local g = badge.gfx
-local ui = require("ui")
+local g = require("gfx")
+local ui = require("kit")
 
 local world = {}
 
@@ -27,8 +27,9 @@ local FACE_C = { [0] = g.color(26, 26, 26), g.color(54, 53, 51), g.color(98, 96,
 local Room = {}
 Room.__index = Room
 
--- Laying out a room is the heaviest thing the app does, and the badge kills
--- any callback that runs past 250 ms. So it runs as a coroutine: `pause` is
+-- Laying out a room is the heaviest thing the app does, and Solana OS stops
+-- any callback that runs past 200 000 Lua instructions. So it runs as a
+-- coroutine: `pause` is
 -- called between row bands and the caller spreads the work over frames
 -- (main.lua shows a threshold while it does).
 local BAND = 6
@@ -83,7 +84,8 @@ function Room:lay(pause)
 end
 
 --- Leaving a room: keep what is in it (bottles, balloons) but give back the
---- grid. With twelve rooms and a 1 MB heap, only the current one is laid out.
+--- grid. Only the current room is laid out: the heap stays small and the
+-- collector has little to walk.
 function Room:suspend()
   if not self.cells then return end
   local parts = {}
@@ -153,7 +155,8 @@ function Room:walkable(x, y)
 end
 
 --- Where to stand when arriving through the door that leads back to `from`.
-function Room:arrival(from)
+function Room:arrival(from, pause)
+  pause = pause or function() end
   local door
   for _, d in ipairs(self.data.doors) do if d.to == from then door = d; break end end
   if not door then
@@ -167,6 +170,7 @@ function Room:arrival(from)
           if n > best then best, bx, by = n, x, y end
         end
       end
+      if y % 3 == 2 then pause() end
     end
     return bx + 0.5, by + 0.5
   end

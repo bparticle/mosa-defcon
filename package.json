@@ -2,7 +2,7 @@
   "name": "mosa-badge",
   "version": "0.1.0",
   "private": true,
-  "description": "M.O.S.A. on the Solana DEF CON badge: Night Shift, a top-down janitor's walk through the Museum of Sirius Art that hands visitors into the HD museum.",
+  "description": "M.O.S.A. on the Solana badge: Night Shift, a top-down janitor's walk through the Museum of Sirius Art that hands visitors into the HD museum.",
   "type": "module",
   "engines": {
     "node": ">=22.18"
@@ -12,20 +12,15 @@
     "sync": "node tools/sync-mosa.mjs",
     "build": "node tools/bundle.mjs",
     "check": "node tools/bundle.mjs --check",
-    "test": "node --import ./tools/lib/register.mjs --test --test-reporter=spec \"test/*.test.mjs\"",
-    "preview": "node --import ./tools/lib/register.mjs tools/preview.mjs",
-    "version": "node tools/bundle.mjs && git add scripts apps CHANGELOG.md",
+    "test": "node --test --test-reporter=spec \"test/*.test.mjs\"",
+    "preview": "node tools/preview.mjs",
+    "version": "node tools/bundle.mjs && git add apps CHANGELOG.md",
     "pixel": "node tools/pixel.mjs",
-    "play": "node --import ./tools/lib/register.mjs tools/play/server.mjs"
+    "play": "node tools/play/server.mjs"
   },
   "devDependencies": {
-    "@noble/ed25519": "^3.1.0",
-    "jpeg-js": "^0.4.4",
-    "jsqr": "^1.4.0",
-    "pako": "^2.2.0",
     "pngjs": "^7.0.0",
     "sharp": "^0.34.4",
-    "upng-js": "^2.1.0",
     "wasmoon": "^1.16.0"
   },
   "repository": {

@@ -15,7 +15,7 @@
     background-image: repeating-linear-gradient(180deg, transparent 0 13px, #181818 13px 14px); }
   .leds { display: flex; justify-content: space-between; margin-bottom: 10px; }
   .led { width: 14px; height: 14px; background: #111; border: 2px solid #000; }
-  canvas { display: block; width: min(960px, calc(100vw - 100px), calc((100vh - 90px) * 4 / 3)); aspect-ratio: 4 / 3; image-rendering: pixelated; background: #000; }
+  canvas { display: block; width: min(960px, calc(100vw - 100px), calc((100vh - 90px) * 320 / 218)); aspect-ratio: 320 / 218; image-rendering: pixelated; background: #000; }
   .caption { display: flex; justify-content: space-between; margin-top: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .25em; font-size: 10px; }
   h1 { font-size: 12px; letter-spacing: .3em; text-transform: uppercase; margin: 0 0 14px; }
   section { margin-bottom: 20px; }
@@ -36,23 +36,23 @@
 <body>
 <main>
   <div class="badge">
-    <div class="leds"><span class="led" id="led0"></span><span class="led" id="led1"></span></div>
-    <canvas id="screen" width="320" height="240" tabindex="0" aria-label="Badge screen"></canvas>
+    <div class="leds"><span class="led" id="led0"></span><span class="led" id="led1"></span><span class="led" id="led2"></span><span class="led" id="led3"></span><span class="led" id="led4"></span><span class="led" id="led5"></span><span class="led" id="led6"></span><span class="led" id="led7"></span></div>
+    <canvas id="screen" width="320" height="218" tabindex="0" aria-label="Badge screen"></canvas>
     <div class="caption"><span>M.O.S.A. Night Shift</span><span id="status" class="status">connecting</span></div>
   </div>
   <aside>
     <h1>Local badge</h1>
+    <p class="status">Night Shift on a headless Solana OS (tools/lib/host.mjs). The real emulator is on solana.com: see docs/BADGE.md.</p>
     <section>
       <h2>Keys</h2>
       <dl>
         <dt><kbd>←↑↓→</kbd></dt><dd>Walk, menus</dd>
         <dt><kbd>Z</kbd><kbd>↵</kbd></dt><dd>SELECT</dd>
         <dt><kbd>X</kbd><kbd>Esc</kbd></dt><dd>CANCEL</dd>
-        <dt><kbd>M</kbd></dt><dd>Hold to blow into the mics</dd>
       </dl>
     </section>
     <section>
-      <h2>Radio</h2>
+      <h2>Mesh</h2>
       <button id="friend" aria-pressed="false">Janitor nearby</button>
       <button id="wave">Wave at me</button>
     </section>
@@ -70,7 +70,7 @@
 <script>
   const canvas = document.getElementById('screen');
   const ctx = canvas.getContext('2d');
-  const img = ctx.createImageData(320, 240);
+  const img = ctx.createImageData(320, 218);
   const logEl = document.getElementById('log');
   const status = document.getElementById('status');
   const post = (path) => fetch(path, { method: 'POST' });
@@ -91,7 +91,7 @@
   es.addEventListener('leds', (e) => {
     JSON.parse(e.data).forEach((l, i) => {
       const el = document.getElementById('led' + i);
-      if (el) el.style.background = `rgb(${l.r},${l.g},${l.b})`;
+      if (el) el.style.background = `rgb(${l[0]},${l[1]},${l[2]})`;
     });
   });
   es.addEventListener('log', (e) => {
@@ -108,7 +108,6 @@
   const held = new Set();
   addEventListener('keydown', (e) => {
     if (e.target.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) return;
-    if (e.key === 'm' || e.key === 'M') { if (!e.repeat) post('/blow?on=1'); return; }
     const k = MAP[e.key];
     if (!k) return;
     e.preventDefault();
@@ -117,13 +116,12 @@
     post(`/key?k=${k}&down=1`);
   });
   addEventListener('keyup', (e) => {
-    if (e.key === 'm' || e.key === 'M') { post('/blow?on=0'); return; }
     const k = MAP[e.key];
     if (!k || !held.has(k)) return;
     held.delete(k);
     post(`/key?k=${k}&down=0`);
   });
-  addEventListener('blur', () => { for (const k of held) post(`/key?k=${k}&down=0`); held.clear(); post('/blow?on=0'); });
+  addEventListener('blur', () => { for (const k of held) post(`/key?k=${k}&down=0`); held.clear(); });
 
   const friend = document.getElementById('friend');
   friend.onclick = () => {

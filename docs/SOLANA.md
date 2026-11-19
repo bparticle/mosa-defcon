@@ -1,5 +1,9 @@
 # Solana: trust tiers for the badge
 
+*Written for the earlier Solana DEF CON badge platform (ESP32-S3, mics,
+ESP-NOW). Night Shift now runs on Solana OS on the Breakpoint 2026 badge; see the
+[changelog](../CHANGELOG.md) for what changed.*
+
 The badge is a Solana device in a literal sense: every one generates an
 Ed25519 keypair on first boot, preferably inside its NXP SE050 secure element,
 and its public key **is a Solana address** (the badge ID is its first 8 base58

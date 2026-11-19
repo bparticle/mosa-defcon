@@ -1,11 +1,12 @@
--- MOSA's 2D language, translated to a 320x240 screen and a 6x8 bitmap font.
+-- MOSA's 2D language, translated to a 320x218 screen and a 6x8 bitmap font.
+-- (Named kit, not ui: `ui` is Solana OS's own module, which gfx.lua uses.)
 --
 -- The museum's rules (apps/frontend/CLAUDE.md, "Design language") hold here:
 -- near-black or off-white surfaces, typography-led, wide-tracked uppercase
 -- labels, and NO colour in the chrome. All chromatic energy comes from the
 -- archive itself (the bottle thumbnails, the balloons). The single non-neutral
 -- accent is the museum's crosshair green, #7ee8a8.
-local g = badge.gfx
+local g = require("gfx")
 local ui = {}
 
 ui.BG = g.color(11, 11, 12)
@@ -17,7 +18,7 @@ ui.DIM = g.color(58, 56, 54)
 ui.CAST = g.color(170, 166, 158) -- plaster
 ui.ACCENT = g.color(0x7e, 0xe8, 0xa8)
 
-ui.W, ui.H = 320, 240
+ui.W, ui.H = g.W, g.H -- 320 x 218, below Solana OS's status bar
 
 --- Wide-tracked text: the museum's uppercase labels.
 function ui.tracked(s, x, y, col, size, gap)
@@ -42,7 +43,8 @@ end
 function ui.wrap(text, width, size)
   local per = math.max(1, width // (6 * (size or 1)))
   local lines, line = {}, ""
-  for word in tostring(text):gmatch("%S+") do
+  for w in tostring(text):gmatch("%S+") do
+    local word = w -- loop variables are read-only in Lua 5.5
     while #word > per do
       if #line > 0 then lines[#lines + 1] = line; line = "" end
       lines[#lines + 1] = word:sub(1, per)
@@ -71,9 +73,13 @@ function ui.fit(s, width, size)
   return s:sub(1, math.max(1, per - 1)) .. "~"
 end
 
+-- The badge's buttons, as Solana OS names them on its own screens.
+local LABEL = { a = "SELECT", b = "CANCEL" }
+function ui.label(name) return LABEL[name] or name:upper() end
+
 --- A button as MOSA prints it on a plaque: an inverted block.
 function ui.key(name, x, y, paper)
-  local label = badge.input.label(name)
+  local label = ui.label(name)
   local w = #label * 6 + 6
   g.fill_rect(x, y - 2, w, 12, paper and ui.PAPER_INK or ui.INK)
   g.text(label, x + 3, y, paper and ui.PAPER or ui.BG)
@@ -81,10 +87,11 @@ function ui.key(name, x, y, paper)
 end
 
 --- The bottom hint line: [SELECT] MUSEUM LINK   [CANCEL] BACK.
+ui.HINTS_Y = ui.H - 12
 function ui.hints(list, y, col, paper)
-  y = y or 228
+  y = y or ui.HINTS_Y
   local width = 0
-  for i = 1, #list, 2 do width = width + (#badge.input.label(list[i]) + #list[i + 1]) * 6 + 25 end
+  for i = 1, #list, 2 do width = width + (#ui.label(list[i]) + #list[i + 1]) * 6 + 25 end
   local x = (ui.W - width + 14) // 2
   for i = 1, #list, 2 do
     x = x + ui.key(list[i], x, y, paper) + 5
@@ -178,35 +185,10 @@ end
 --- A catalogue number: NO. 007.
 function ui.no(n) return string.format("NO. %03d", n) end
 
---- A QR code with its quiet zone, dark on light. Returns the drawn size.
-function ui.qr(code, x, y, scale, dark, light)
-  dark, light = dark or ui.PAPER_INK, light or ui.PAPER
-  local q = 3 * scale -- quiet zone (3 modules reads fine on an LCD)
-  local size = code.size * scale + q * 2
-  g.fill_rect(x, y, size, size, light)
-  local m, n = code.modules, code.size
-  for row = 0, n - 1 do
-    local base, run = row * n, -1
-    for col = 0, n do
-      local on = col < n and m:byte(base + col + 1) == 49
-      if on and run < 0 then run = col
-      elseif not on and run >= 0 then
-        g.fill_rect(x + q + run * scale, y + q + row * scale, (col - run) * scale, scale, dark)
-        run = -1
-      end
-    end
-  end
-  return size
-end
-
---- Biggest integer module scale that fits a box.
-function ui.qr_scale(code, box)
-  return math.max(1, box // (code.size + 6))
-end
-
 -- Thumbnails: 16x24 palette art from the sync. piece.rle is run-length pairs
 -- (count in the base64 alphabet, palette index in hex, 0 = transparent), so a
--- draw is one rect per run and nothing is cached but the 15-colour palette.
+-- draw is one rect per run and nothing is cached but the 15-colour palette
+-- (RGB565 in the data, turned into the canvas's 0xRRGGBB once).
 local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local COUNT, HEX = {}, {}
 for i = 1, 64 do COUNT[B64:byte(i)] = i end
@@ -216,7 +198,7 @@ local function palette(piece)
   local pal = palettes[piece.idx]
   if not pal then
     pal = {}
-    for i = 1, #piece.pal // 4 do pal[i] = tonumber(piece.pal:sub(i * 4 - 3, i * 4), 16) end
+    for i = 1, #piece.pal // 4 do pal[i] = g.from565(tonumber(piece.pal:sub(i * 4 - 3, i * 4), 16)) end
     palettes[piece.idx] = pal
   end
   return pal

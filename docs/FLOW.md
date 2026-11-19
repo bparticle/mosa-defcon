@@ -7,10 +7,9 @@ real screen.
 ```mermaid
 flowchart TD
   subgraph Reach["1 · Reach: getting the app onto badges"]
-    S1[App Store page<br/>solanadefcon.com/store] -->|repo URL + badge ID| OFFER[Offer in the badge's inbox]
-    BOOTH[MOSA booth / party<br/>staff send it to your badge ID] --> OFFER
+    S1[Solana OS App Store] -->|install| APP[Night Shift installed]
+    BOOTH[MOSA booth / party<br/>staff plug the badge in] -->|Run on badge| APP
     LANYARD[Someone else's badge<br/>in Lanyard mode] -->|scan| SITE
-    OFFER -->|wearer presses SELECT| APP[Night Shift installed]
   end
 
   subgraph Play["2 · Play: on the badge"]
@@ -18,9 +17,9 @@ flowchart TD
     TITLE -->|idle 30 s| LANY[Lanyard mode<br/>walking billboard]
     TITLE --> WALK[Night Shift<br/>real MOSA floorplans]
     WALK --> FIND[Find a bottle<br/>museum label card]
-    WALK --> POP[Pop balloons<br/>SELECT or blow]
+    WALK --> POP[Pop balloons<br/>SELECT]
     WALK --> STAMP[Room stamps<br/>MOSA's own goals]
-    WALK <-->|ESP-NOW| PEERS[Other janitors nearby<br/>wave · mythical unlock]
+    WALK <-->|mesh| PEERS[Other janitors nearby<br/>wave · mythical unlock]
     FIND --> REC[Shift record]
     STAMP --> REC
   end
@@ -46,13 +45,13 @@ flowchart TD
 
 | Channel | How | Cost to the person |
 | --- | --- | --- |
-| **App Store** | Paste `github.com/<owner>/mosa-badge` at solanadefcon.com/store, enter a badge ID, send. The badge asks its wearer; SELECT installs. | 10 seconds, no cable |
-| **Booth push** | MOSA staff do the above for visitors (badge ID is on Settings → Identity, printed large). A pinned release: `…/mosa-badge/tree/v0.1.0`. | None |
+| **App Store** | Night Shift is submitted to the Solana OS App Store; a visitor installs it from the store on their badge. | A minute, no cable |
+| **Booth install** | MOSA staff plug a visitor's badge in and use **Run on badge** with a pinned release (see [BADGE.md](BADGE.md)). | None |
 | **Lanyard** | Every installed badge left idle for 30 s shows a scannable MOSA QR and rotating art. Strangers scan the wearer's chest. | None; it's the default idle state |
-| **Word of mouth** | ESP-NOW presence: badges with the app see each other. The mythical bottle only appears when two players are near. | Standing next to someone |
+| **Word of mouth** | Mesh presence: badges with the app see each other. The mythical bottle only appears when two players are near. | Standing next to someone |
 
-The App Store sends **one `.lua` file**, so the whole app (code, floorplans, 41
-bottle thumbnails) is bundled into `scripts/mosa.lua` (≈ 83 KB of the 96 KB cap).
+The App Store installs **one app package**, so the whole app (code, floorplans,
+41 bottle thumbnails) travels in `apps/mosa/`, with nothing fetched at runtime.
 
 ## 2. Play
 
@@ -60,10 +59,9 @@ bottle thumbnails) is bundled into `scripts/mosa.lua` (≈ 83 KB of the 96 KB ca
   you and a beam ahead; tiles you've seen stay faintly remembered.
 - **Sweep.** Bottles from the live MOSA Bottles collection lie where the
   catalogue hunts them (busier rooms in MOSA are messier on the badge). Walk
-  into one to pick it up. The two LEDs act as a metal detector: the nearest
+  into one to pick it up. The LEDs act as a metal detector: the nearest
   bottle's colour, blinking faster as you close in.
-- **Pop.** Balloons drift in every room. SELECT pops one in reach; blowing into
-  the badge pops everything in front of you. Some drop a bottle.
+- **Pop.** Balloons drift in every room. SELECT pops one in reach. Some drop a bottle.
 - **Stamp.** Entering a room, clearing Floor 1's balloons, finding the
   Crocodile Vault: the same goals as MOSA's room programmes, stamped on the
   badge's Visitor Map.

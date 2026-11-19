@@ -86,9 +86,9 @@ validated by `parseLinkPath`.
 ### 4. A small-thumbnail endpoint
 
 `GET /finds/media/<c>/<p>/cover?w=96` (PNG, ≤ 30 KB) for the badge's online
-mode (pocket gallery, sharper label art when on Wi-Fi). The badge decodes PNG/
-JPEG up to 256 KB but has only a 1 MB Lua heap and slow links over the BLE
-bridge.
+mode (pocket gallery, sharper label art when on Wi-Fi). Not built; it was
+sized for the earlier DEF CON badge platform, so recheck it against what
+Solana OS apps can fetch and decode before building it.
 
 ### 5. Booth beacon verification (with tier 2)
 

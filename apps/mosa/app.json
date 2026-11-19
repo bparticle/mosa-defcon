@@ -1,0 +1,14 @@
+{
+  "id": "mosa-night-shift",
+  "name": "M.O.S.A. Night Shift",
+  "version": "0.1.0",
+  "author": "Sirius Crocodile",
+  "summary": "Walk the Museum of Sirius Art after hours, find the bottles, scan into the HD museum.",
+  "icon": "eye",
+  "accent": "7EE8A8",
+  "category": "games",
+  "permissions": [
+    "led",
+    "mesh"
+  ]
+}

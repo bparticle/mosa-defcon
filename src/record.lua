@@ -1,15 +1,15 @@
--- The janitor's record: what this badge has found, which rooms it has stamped,
--- and its settings. Lives in the badge's per-app key/value store, so it
--- survives reboots and filesystem reflashes.
+-- The janitor's record: what this badge has found, which rooms it has stamped.
+-- Kept in the app's Solana OS storage (data.json on the microSD card, 16 KB),
+-- so it survives relaunches and app updates; uninstalling the app clears it.
 --
 -- Indices are the APPEND-ONLY registry in mosa.lock.json (piece.idx, room.idx),
 -- so a record written by an older release still means the same pieces after a
--- data sync adds new ones. Keys are at most 8 characters (NVS limit).
+-- data sync adds new ones. The bitsets are stored as hex strings.
 local util = require("util")
 
 local record = {}
-local kv = badge.storage.kv
-local SCHEMA = "1"
+local KEY = "record"
+local SCHEMA = 1
 
 local state = {
   found = {},   -- piece idx → true
@@ -18,50 +18,56 @@ local state = {
   pickups = 0,
   pops = 0,
   shifts = 0,
-  mic = true,
 }
 record.state = state
 
-local function getn(key)
-  return tonumber(kv.get(key, "0")) or 0
+local function hex(set)
+  local max = -1
+  for i in pairs(set) do if i > max then max = i end end
+  return util.bits_to_hex(set, max + 1)
+end
+
+local function save()
+  local goals = {}
+  for k in pairs(state.goals) do goals[#goals + 1] = k end
+  table.sort(goals)
+  storage.set(KEY, {
+    v = SCHEMA,
+    found = hex(state.found),
+    rooms = hex(state.rooms),
+    goals = table.concat(goals, ";"),
+    pickups = state.pickups,
+    pops = state.pops,
+    shifts = state.shifts,
+  })
 end
 
 function record.load()
-  if kv.get("v", "") ~= SCHEMA then
-    -- First run (or a future schema we do not know): start clean, keep nothing
-    -- we cannot read.
-    kv.set("v", SCHEMA)
-  end
-  state.found = util.bits_from_hex(kv.get("found", ""))
-  state.rooms = util.bits_from_hex(kv.get("rooms", ""))
+  local saved = storage.get(KEY)
+  -- Nothing saved yet (or a future schema we do not know): start clean.
+  if type(saved) ~= "table" or saved.v ~= SCHEMA then saved = {} end
+  state.found = util.bits_from_hex(saved.found or "")
+  state.rooms = util.bits_from_hex(saved.rooms or "")
   state.goals = {}
-  for g in (kv.get("goals", "")):gmatch("[^;]+") do state.goals[g] = true end
-  state.pickups = getn("pickups")
-  state.pops = getn("pops")
-  state.shifts = getn("shifts")
-  state.mic = kv.get("mic", "1") == "1"
-end
-
-local function save_bits(key, set)
-  local max = -1
-  for i in pairs(set) do if i > max then max = i end end
-  kv.set(key, util.bits_to_hex(set, max + 1))
+  for k in tostring(saved.goals or ""):gmatch("[^;]+") do state.goals[k] = true end
+  state.pickups = tonumber(saved.pickups) or 0
+  state.pops = tonumber(saved.pops) or 0
+  state.shifts = tonumber(saved.shifts) or 0
 end
 
 --- Returns true when the piece is new to this badge.
 function record.find(piece)
   state.pickups = state.pickups + 1
-  kv.set("pickups", tostring(state.pickups))
-  if state.found[piece.idx] then return false end
+  local new = not state.found[piece.idx]
   state.found[piece.idx] = true
-  save_bits("found", state.found)
-  return true
+  save()
+  return new
 end
 
 function record.visit(room)
   if state.rooms[room.idx] then return false end
   state.rooms[room.idx] = true
-  save_bits("rooms", state.rooms)
+  save()
   return true
 end
 
@@ -70,31 +76,23 @@ function record.stamp(room_id, goal_id)
   local key = room_id .. "/" .. goal_id
   if state.goals[key] then return false end
   state.goals[key] = true
-  local list = {}
-  for k in pairs(state.goals) do list[#list + 1] = k end
-  table.sort(list)
-  kv.set("goals", table.concat(list, ";"))
+  save()
   return true
 end
 
 function record.pop()
   state.pops = state.pops + 1
-  -- Written lazily: a balloon is cheap, NVS writes are not.
-  if state.pops % 5 == 0 then kv.set("pops", tostring(state.pops)) end
+  -- Written lazily: a balloon is cheap, a write to the card is not.
+  if state.pops % 5 == 0 then save() end
 end
 
 function record.clock_in()
   state.shifts = state.shifts + 1
-  kv.set("shifts", tostring(state.shifts))
-end
-
-function record.set_mic(on)
-  state.mic = on
-  kv.set("mic", on and "1" or "0")
+  save()
 end
 
 function record.flush()
-  kv.set("pops", tostring(state.pops))
+  save()
 end
 
 function record.found_count()

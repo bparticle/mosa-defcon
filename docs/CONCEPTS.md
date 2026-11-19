@@ -1,5 +1,9 @@
 # Concepts: bringing M.O.S.A. to the Solana badge
 
+*Written for the earlier Solana DEF CON badge platform (ESP32-S3, mics,
+ESP-NOW). Night Shift now runs on Solana OS on the Breakpoint 2026 badge; see the
+[changelog](../CHANGELOG.md) for what changed.*
+
 The question: what can a 320×240 screen, six buttons, two RGB LEDs, two
 microphones, ESP-NOW, BLE, Wi-Fi and a secure element holding a Solana key do
 for a brutalist 3D museum? It can't render the museum. It can be a **door into

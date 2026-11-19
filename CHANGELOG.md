@@ -19,13 +19,33 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 - The museum now reads the shift-report QR: a Night Shift sheet on arrival and a
   one-per-wallet commemorative (built in `bparticle/mosa`, see
   [docs/MOSA-INTEGRATION.md](docs/MOSA-INTEGRATION.md) §2).
-- `pnpm play`: play the built app in a browser on the Solana OS emulator,
-  with simulated mics and nearby badges, reloading on every build.
+- `pnpm play`: play the built app in a browser on a headless Solana OS, with
+  simulated nearby badges, reloading on every build.
+- [docs/BADGE.md](docs/BADGE.md): installing on a badge, and checking a build on
+  the real firmware.
 
 ### Changed
+- **Ported to Solana OS 2.4 on the Breakpoint 2026 badge (ESP32-C5, Lua 5.5).**
+  The build is now an app package in `apps/mosa/` (`main.lua`, `app.json`,
+  modules) instead of `scripts/mosa.lua`. Install it with **Run on badge** at
+  solana.com/breakpoint/badge/apps/submit.
+- Drawing goes through one `ui.canvas`, with the 6×8 font bundled; QR codes are
+  drawn by the firmware.
+- Eight LEDs instead of two.
+- Other janitors are found over the Solana OS mesh instead of ESP-NOW. Waves
+  carry the badge owner's name.
+- The shift record is kept in the app's storage (one key). The shift-report
+  code is unchanged, so the museum reads it as before.
+- CANCEL on the title leaves the app.
 - Automatic bottle sprites are pixelized, not shrunk: background removal, a
   mode filter per pixel and a 7-colour palette. Crisper, and the data is 8 KB
   smaller.
+
+### Removed
+- Blowing into the badge to pop balloons: this badge has no microphones.
+  SELECT still pops them.
+- The Lua QR encoder, `scripts/mosa.lua`, and the `vendor/solana-badge`
+  submodule with its emulator.
 
 ## [0.1.0] - 2026-11-19
 

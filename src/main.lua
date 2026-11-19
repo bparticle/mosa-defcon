@@ -1,24 +1,19 @@
 -- M.O.S.A. Night Shift: walk the museum after hours, find the bottles, scan into the HD museum.
 --
--- Entry point. Scenes are small tables (enter / update / draw / button) on a
--- stack; overlays draw the scene beneath them first. All museum content comes
+-- A Solana OS app (docs/ARCHITECTURE.md). Solana OS runs this file once, then
+-- calls on_tick every 30 ms and on_key on a button. Scenes are small tables
+-- (enter / update / draw / button) on a stack; overlays draw the scene beneath
+-- them first, onto the one canvas gfx.lua keeps. All museum content comes
 -- from data/mosa_data.lua, generated from MOSA by `pnpm sync`.
-local g = badge.gfx
-local input = badge.input
-local led = badge.led
-
+local g = require("gfx")
 local util = require("util")
-local qr = require("qr")
-local ui = require("ui")
+local ui = require("kit")
 local world = require("world")
 local record = require("record")
 local net = require("net")
 local DATA = require("data.mosa_data")
 local ok_build, BUILD = pcall(require, "build_info")
 if not ok_build then BUILD = { version = "dev", built = "", repo = "" } end
--- In the bundled script every module sits in package.preload; once required,
--- drop the loader so its (large, for the data) function can be collected.
-for name in pairs(package.preload) do package.preload[name] = nil end
 
 local DATA_SCHEMA = 1
 
@@ -31,13 +26,17 @@ local toast = nil
 local rng
 local rooms_by_id, piece_count = {}, 0
 local pulse = nil -- { r, g, b, until }
+local held = {} -- the buttons down this tick (sys.keys)
 
 for _, r in ipairs(DATA.rooms) do rooms_by_id[r.id] = r end
-for _, p in ipairs(DATA.pieces) do piece_count = math.max(piece_count, p.idx + 1) end
+for _, p in ipairs(DATA.pieces) do
+  piece_count = math.max(piece_count, p.idx + 1)
+  p.tint = g.from565(p.tint) -- the sync speaks RGB565; the canvas takes 0xRRGGBB
+end
 local collections = {}
 for _, c in ipairs(DATA.collections) do collections[c.slug] = c end
 
--- The framebuffer persists between frames, so a `static` scene (a card, a
+-- The canvas keeps its pixels between ticks, so a `static` scene (a card, a
 -- list, a QR code) is painted once and then left alone until something
 -- changes: no CPU spent, and the badge lasts longer on a lanyard.
 local dirty = true
@@ -57,28 +56,11 @@ local function say(text, sub, seconds)
   dirty = true
 end
 
-local function rgb(c)
-  local r, gg, b = (c >> 11) & 31, (c >> 5) & 63, c & 31
-  return (r << 3) | (r >> 2), (gg << 2) | (gg >> 4), (b << 3) | (b >> 2)
-end
+local rgb = g.rgb
 
 local function flash(c, seconds)
   local r, gg, b = rgb(c)
   pulse = { r, gg, b, t + (seconds or 0.5) }
-end
-
--- QR codes are developed a mask at a time across frames, then kept.
-local codes, developing = {}, {}
-local function code_for(url)
-  -- A handful of codes is plenty; each is a few KB of heap.
-  local n = 0
-  for _ in pairs(codes) do n = n + 1 end
-  if n > 6 and not codes[url] then codes = {} end
-  if codes[url] then return codes[url] end
-  developing[url] = developing[url] or qr.encoder(url)
-  local done = developing[url]()
-  if done then codes[url] = done; developing[url] = nil end
-  return done
 end
 
 local function report_url()
@@ -167,25 +149,25 @@ function Splash:draw()
   local w = ui.block_width(LOGO, k)
   local x = (ui.W - w) // 2
   local n = math.max(0, math.min(#LOGO, math.floor((T - 0.55) / 0.11) + 1))
-  if n > 0 then ui.block(LOGO:sub(1, n), x, 70, k, ui.INK, ui.SHADOW) end
+  if n > 0 then ui.block(LOGO:sub(1, n), x, 62, k, ui.INK, ui.SHADOW) end
   if T > 1.45 then
-    g.fill_rect(x, 134, math.floor(w * math.min(1, (T - 1.45) / 0.3)), 3, ui.INK)
+    g.fill_rect(x, 126, math.floor(w * math.min(1, (T - 1.45) / 0.3)), 3, ui.INK)
   end
   if T > 1.8 then
-    ui.tracked(("MUSEUM OF SIRIUS ART"):sub(1, math.floor((T - 1.8) * 40)), x, 50, ui.MUTED, 1, 4)
+    ui.tracked(("MUSEUM OF SIRIUS ART"):sub(1, math.floor((T - 1.8) * 40)), x, 42, ui.MUTED, 1, 4)
   end
   if T > 2.3 then
     local lw = ui.tracked_width("NIGHT SHIFT", 2, 4)
-    g.fill_rect(x, 146, lw + 16, 24, ui.PAPER)
-    ui.tracked("NIGHT SHIFT", x + 8, 150, ui.PAPER_INK, 2, 4)
+    g.fill_rect(x, 138, lw + 16, 24, ui.PAPER)
+    ui.tracked("NIGHT SHIFT", x + 8, 142, ui.PAPER_INK, 2, 4)
     -- The museum's crosshair, the one thing on screen in colour.
-    local cx, cy = x + w - 9, 158
+    local cx, cy = x + w - 9, 150
     g.fill_rect(cx - 8, cy, 6, 1, ui.ACCENT); g.fill_rect(cx + 3, cy, 6, 1, ui.ACCENT)
     g.fill_rect(cx, cy - 8, 1, 6, ui.ACCENT); g.fill_rect(cx, cy + 3, 1, 6, ui.ACCENT)
   end
   if T > 2.7 then
-    g.text(ui.no(1), x, 214, ui.MUTED)
-    g.text_right("v" .. BUILD.version, x + w, 214, ui.DIM)
+    g.text(ui.no(1), x, 196, ui.MUTED)
+    g.text_right("v" .. BUILD.version, x + w, 196, ui.DIM)
   end
 end
 function Splash:button()
@@ -201,7 +183,6 @@ function Title:enter()
     { "SHIFT RECORD", function() push(Record.new()) end },
     { "ABOUT", function() push(About) end },
   }
-  pcall(badge.mic.enable, false)
 end
 function Title:resume() self:enter() end
 function Title:update(dt)
@@ -229,12 +210,12 @@ function Title:draw()
   g.text(ui.fit(p.title, 84), 218, 150, ui.PAPER_INK)
   g.text(ui.fit(p.artist, 84), 218, 162, ui.MUTED)
   ui.tracked(ui.TIER[p.tier] or "", 218, 175, ui.MUTED, 1, 1)
-  g.fill_rect(0, 208, ui.W, 1, ui.DIM)
-  g.text("v" .. BUILD.version, 16, 220, ui.DIM)
+  g.fill_rect(0, 194, ui.W, 1, ui.DIM)
+  g.text("v" .. BUILD.version, 16, 204, ui.DIM)
   local near = net.nearby()
   local found = record.found_count()
-  if near > 0 then g.text_right(near .. " JANITOR" .. (near > 1 and "S" or "") .. " NEARBY", 306, 220, ui.ACCENT)
-  elseif found > 0 then g.text_right(found .. " / " .. #DATA.pieces .. " IN YOUR RECORD", 306, 220, ui.MUTED) end
+  if near > 0 then g.text_right(near .. " JANITOR" .. (near > 1 and "S" or "") .. " NEARBY", 306, 204, ui.ACCENT)
+  elseif found > 0 then g.text_right(found .. " / " .. #DATA.pieces .. " IN YOUR RECORD", 306, 204, ui.MUTED) end
 end
 Title.button = menu_button
 
@@ -244,15 +225,9 @@ function Lanyard:update(dt)
   self.art_t = self.art_t + dt
   if self.art_t > 4 then self.art_t = 0; self.art = self.art % #DATA.pieces + 1; invalidate() end
 end
+function Lanyard:qr() return { DATA.home, 12, 14, 186 } end
 function Lanyard:draw()
   g.clear(ui.PAPER)
-  local code = code_for(DATA.home)
-  if code then
-    ui.qr(code, 14, 28, ui.qr_scale(code, 186))
-  else
-    ui.tracked("DEVELOPING", 40, 110, ui.MUTED, 1, 2)
-    invalidate()
-  end
   local x = 206
   ui.block("MOSA", x, 26, 3, ui.PAPER_INK)
   g.fill_rect(x, 54, 100, 13, ui.PAPER_INK)
@@ -260,11 +235,11 @@ function Lanyard:draw()
   g.text("The Museum of", x, 74, ui.MUTED)
   g.text("Sirius Art", x, 84, ui.MUTED)
   local p = DATA.pieces[self.art]
-  g.fill_rect(x, 98, 100, 92, g.color(24, 24, 24))
-  ui.thumb(p, x + 26, 104, 3)
-  g.text(ui.fit(p.title, 100), x, 196, ui.PAPER_INK)
-  g.text(ui.fit(p.artist, 100), x, 206, ui.MUTED)
-  ui.tracked(short_url(DATA.site):upper(), 14, 222, ui.PAPER_INK, 1, 2)
+  g.fill_rect(x, 94, 100, 84, g.color(24, 24, 24))
+  ui.thumb(p, x + 26, 100, 3)
+  g.text(ui.fit(p.title, 100), x, 184, ui.PAPER_INK)
+  g.text(ui.fit(p.artist, 100), x, 194, ui.MUTED)
+  ui.tracked(short_url(DATA.site):upper(), 14, 206, ui.PAPER_INK, 1, 2)
 end
 function Lanyard:button() pop() end
 
@@ -274,15 +249,9 @@ Code.__index = Code
 function Code.new(url, heading, title, body)
   return setmetatable({ url = url, heading = heading, title = title, body = body }, Code)
 end
+function Code:qr() return { self.url, 8, 8, 202 } end
 function Code:draw()
   g.clear(ui.PAPER)
-  local code = code_for(self.url)
-  if code then
-    ui.qr(code, 8, 8, ui.qr_scale(code, 200))
-  else
-    ui.tracked("DEVELOPING", 46, 104, ui.MUTED, 1, 2)
-    invalidate()
-  end
   local x, w = 216, 98
   local y = 14
   for _, l in ipairs(ui.wrap(self.heading, w, 1)) do g.text(l, x, y, ui.PAPER_INK); y = y + 10 end
@@ -295,9 +264,9 @@ function Code:draw()
   ui.paragraph(self.body or "", x, y, w, ui.MUTED, 1, 10)
   local spaced = short_url(self.url):gsub("/", "/ "):gsub("%?", " ?")
   local lines = ui.wrap(spaced, w, 1)
-  local yy = 214 - #lines * 10
+  local yy = 194 - #lines * 10
   for _, l in ipairs(lines) do g.text((l:gsub("/ ", "/")), x, yy, ui.PAPER_INK); yy = yy + 10 end
-  g.text("BACK", x + ui.key("b", x, 228, true) + 5, 228, ui.MUTED)
+  g.text("BACK", x + ui.key("b", x, 206, true) + 5, 206, ui.MUTED)
 end
 function Code:button(key) if key == "b" or key == "a" then pop() end end
 
@@ -305,19 +274,14 @@ function Code:button(key) if key == "b" or key == "a" then pop() end end
 Game = { name = "game" }
 Game.__index = Game
 function Game.new()
-  return setmetatable({ built = {}, fx = 0, fy = -1, armed = false, blow = 0, cool = 0 }, Game)
+  return setmetatable({ built = {}, fx = 0, fy = -1, armed = false }, Game)
 end
 
 function Game:enter()
   record.clock_in()
-  if record.state.mic then pcall(badge.mic.enable, true) end
   self:travel(DATA.start, nil)
 end
-function Game:resume()
-  if record.state.mic then pcall(badge.mic.enable, true) else pcall(badge.mic.enable, false) end
-end
 function Game:leave()
-  pcall(badge.mic.enable, false)
   record.flush()
 end
 
@@ -343,7 +307,7 @@ function Game:travel(to, from)
     else
       room:resume(coroutine.yield)
     end
-    self.px, self.py = room:arrival(from)
+    self.px, self.py = room:arrival(from, coroutine.yield)
     return room
   end)
   self.arriving = data
@@ -399,14 +363,21 @@ function Game:popped()
 end
 
 function Game:update(dt)
-  if not self:step_loading() then return end
+  -- A few slices of a room being laid out per tick: each is well under a
+  -- tenth of the 200 000-instruction budget (test/app.test.mjs measures it).
+  local ready = false
+  for _ = 1, 4 do
+    ready = self:step_loading()
+    if ready then break end
+  end
+  if not ready then return end
   local room = self.room
   room:update(dt)
   local mx, my = 0, 0
-  if input.down("left") then mx = mx - 1 end
-  if input.down("right") then mx = mx + 1 end
-  if input.down("up") then my = my - 1 end
-  if input.down("down") then my = my + 1 end
+  if held.left then mx = mx - 1 end
+  if held.right then mx = mx + 1 end
+  if held.up then my = my - 1 end
+  if held.down then my = my + 1 end
   if mx ~= 0 or my ~= 0 then
     local len = math.sqrt(mx * mx + my * my)
     self.fx, self.fy = mx / len, my / len
@@ -442,25 +413,6 @@ function Game:update(dt)
     end
   end
 
-  -- Blow into the badge's microphones to pop the balloons in front of you.
-  self.cool = math.max(0, self.cool - dt)
-  if record.state.mic then
-    local ok, l, r = pcall(badge.mic.level)
-    local level = ok and math.max(l or 0, r or 0) or 0
-    if level > 70 then self.blow = self.blow + dt else self.blow = 0 end
-    if self.blow > 0.2 and self.cool == 0 then
-      self.cool = 1
-      local any = false
-      for _, b in ipairs(room.balloons) do
-        if not b.popped then
-          local dx, dy = b.x - self.px, b.y - self.py
-          if dx * dx + dy * dy < 12 then room:pop(b, rng, stocker(false)); any = true end
-        end
-      end
-      if any then say("WHOOSH", nil, 1.2); self:popped() end
-    end
-  end
-
   net.update(room.data.id, record.found_count())
 end
 
@@ -482,11 +434,11 @@ function Game:draw()
   local hint
   if self:nearest_balloon(1.5) then hint = { "a", "pop" }
   elseif room:mark_near(self.px, self.py) then hint = { "a", "read" } end
-  if hint then ui.hints(hint, 226)
+  if hint then ui.hints(hint)
   else
     local d = room:nearest_door(self.px, self.py, 2.6)
     if d and rooms_by_id[d.to] then
-      g.text_center("> " .. rooms_by_id[d.to].name:upper(), 160, 226, ui.MUTED)
+      g.text_center("> " .. rooms_by_id[d.to].name:upper(), 160, ui.HINTS_Y, ui.MUTED)
     end
   end
 end
@@ -514,14 +466,14 @@ Card.static = true
 function Card.new(piece, new) return setmetatable({ piece = piece, new = new }, Card) end
 function Card:draw()
   local p = self.piece
-  ui.slab(18, 18, 284, 198)
-  g.fill_rect(18, 18, 284, 14, ui.PAPER_INK)
-  ui.tracked(ui.TIER[p.tier] or "", 26, 21, ui.PAPER, 1, 2)
-  g.text_right(ui.no(p.idx + 1), 294, 21, ui.PAPER)
-  g.fill_rect(30, 42, 66, 96, g.color(24, 24, 24))
-  ui.thumb(p, 39, 54, 3)
+  ui.slab(18, 8, 284, 198)
+  g.fill_rect(18, 8, 284, 14, ui.PAPER_INK)
+  ui.tracked(ui.TIER[p.tier] or "", 26, 11, ui.PAPER, 1, 2)
+  g.text_right(ui.no(p.idx + 1), 294, 11, ui.PAPER)
+  g.fill_rect(30, 32, 66, 96, g.color(24, 24, 24))
+  ui.thumb(p, 39, 44, 3)
   local x, w = 108, 184
-  local y = 44
+  local y = 34
   local size = (#p.title * 12 <= w) and 2 or 1
   for i, l in ipairs(ui.wrap(p.title, w, size)) do
     if i <= 3 then g.text(l, x, y, ui.PAPER_INK, size); y = y + 9 * size + 2 end
@@ -534,13 +486,13 @@ function Card:draw()
   local label = self.new and "NEW TO YOUR RECORD" or "ALREADY IN YOUR RECORD"
   if self.new then
     local lw = ui.tracked_width(label, 1, 1)
-    g.rect(x, 116, lw + 10, 16, ui.PAPER_INK); g.rect(x + 1, 117, lw + 8, 14, ui.PAPER_INK)
-    ui.tracked(label, x + 5, 120, ui.PAPER_INK, 1, 1)
+    g.rect(x, 106, lw + 10, 16, ui.PAPER_INK); g.rect(x + 1, 107, lw + 8, 14, ui.PAPER_INK)
+    ui.tracked(label, x + 5, 110, ui.PAPER_INK, 1, 1)
   else
-    ui.tracked(label, x, 120, ui.MUTED, 1, 1)
+    ui.tracked(label, x, 110, ui.MUTED, 1, 1)
   end
-  ui.paragraph("It stands somewhere in the museum, in full resolution. Find it there to collect it on Solana.", 30, 148, 260, ui.MUTED, 1, 11)
-  ui.hints({ "a", "museum link", "b", "back to work" }, 198, ui.MUTED, true)
+  ui.paragraph("It stands somewhere in the museum, in full resolution. Find it there to collect it on Solana.", 30, 138, 260, ui.MUTED, 1, 11)
+  ui.hints({ "a", "museum link", "b", "back to work" }, 188, ui.MUTED, true)
 end
 function Card:button(key)
   if key == "a" then
@@ -566,12 +518,12 @@ function Plaque.new(mark, room) return setmetatable({ mark = mark, room = room }
 function Plaque:url() return self.mark.url or self.room.link or DATA.home end
 function Plaque:draw()
   local info = PLAQUES[self.mark.kind] or { self.mark.kind:upper(), "" }
-  ui.slab(40, 50, 240, 138)
-  g.fill_rect(40, 50, 240, 14, ui.PAPER_INK)
-  ui.tracked(info[1], 48, 53, ui.PAPER, 1, 2)
-  g.text(ui.fit(self.mark.label or self.room.name, 212), 54, 74, ui.MUTED)
-  ui.paragraph(info[2], 54, 92, 214, ui.PAPER_INK, 1, 11)
-  ui.hints({ "a", "museum link", "b", "back" }, 170, ui.MUTED, true)
+  ui.slab(40, 36, 240, 138)
+  g.fill_rect(40, 36, 240, 14, ui.PAPER_INK)
+  ui.tracked(info[1], 48, 39, ui.PAPER, 1, 2)
+  g.text(ui.fit(self.mark.label or self.room.name, 212), 54, 60, ui.MUTED)
+  ui.paragraph(info[2], 54, 78, 214, ui.PAPER_INK, 1, 11)
+  ui.hints({ "a", "museum link", "b", "back" }, 156, ui.MUTED, true)
 end
 function Plaque:button(key)
   if key == "a" then
@@ -592,30 +544,29 @@ function Pause.new(game)
     { "BACK TO WORK", function() pop() end },
     { "VISITOR MAP", function() push(Map.new()) end },
     { "SHIFT RECORD", function() push(Record.new()) end },
-    { function() return "BLOW TO POP: " .. (record.state.mic and "ON" or "OFF") end,
-      function() record.set_mic(not record.state.mic) end },
     { "WAVE", function()
         if net.nearby() == 0 then say("NOBODY IN RANGE", "No other janitor is on shift nearby.")
-        elseif net.wave(badge.device_name) then say("YOU WAVED", "Every janitor in range saw it.") end
+        elseif net.wave() then say("YOU WAVED", "Every janitor in range saw it.")
+        else say("NO WAVE", "The radio is busy. Try again in a moment.") end
       end },
     { "CLOCK OUT", function() pop(); pop() end },
   }
   return s
 end
 function Pause:draw()
-  g.fill_rect(28, 24, 272, 200, ui.SHADOW)
-  ui.concrete(24, 20, 272, 200)
-  g.fill_rect(24, 20, 272, 16, ui.PAPER)
-  ui.tracked("ON SHIFT", 32, 24, ui.PAPER_INK, 1, 3)
-  g.text(ui.fit(self.game.room.data.name, 240, 2), 36, 46, ui.INK, 2)
+  g.fill_rect(28, 12, 272, 196, ui.SHADOW)
+  ui.concrete(24, 8, 272, 196)
+  g.fill_rect(24, 8, 272, 16, ui.PAPER)
+  ui.tracked("ON SHIFT", 32, 12, ui.PAPER_INK, 1, 3)
+  g.text(ui.fit(self.game.room.data.name, 240, 2), 36, 34, ui.INK, 2)
   local found = record.found_count()
-  g.text(found .. " of " .. #DATA.pieces .. " bottles in your record", 36, 70, ui.MUTED)
+  g.text(found .. " of " .. #DATA.pieces .. " bottles in your record", 36, 58, ui.MUTED)
   local left = self.game.room:balloons_left()
-  g.text(left == 0 and "No balloons left in this room" or (left .. " balloon" .. (left > 1 and "s" or "") .. " left in this room"), 36, 82, ui.MUTED)
+  g.text(left == 0 and "No balloons left in this room" or (left .. " balloon" .. (left > 1 and "s" or "") .. " left in this room"), 36, 70, ui.MUTED)
   local near = net.nearby()
   g.text(near == 0 and "No other janitors in range" or (near .. " other janitor" .. (near > 1 and "s" or "") .. " on shift nearby"),
-    36, 94, near > 0 and ui.ACCENT or ui.MUTED)
-  menu(self.items, 32, 114, self.sel, 16, 256)
+    36, 82, near > 0 and ui.ACCENT or ui.MUTED)
+  menu(self.items, 32, 106, self.sel, 18, 256)
 end
 function Pause:update(dt)
   -- Janitors come and go; refresh the count once a second.
@@ -647,7 +598,7 @@ end
 function Record:details()
   local n = #DATA.pieces
   local ry = GY + ROWS * CH - 2
-  g.fill_rect(0, ry, 320, 240 - ry, ui.BG)
+  g.fill_rect(0, ry, ui.W, ui.H - ry, ui.BG)
   if self.sel > n then g.fill_rect(GX - 2, ry, 84, 12, ui.PAPER) end
   g.text("SHIFT REPORT", GX + 4, ry + 2, self.sel > n and ui.PAPER_INK or ui.DIM)
   local y = GY + ROWS * CH + 10
@@ -659,16 +610,16 @@ function Record:details()
     if record.state.found[p.idx] then
       g.text(ui.fit(p.title, 300, 2), 10, y + 14, ui.INK, 2)
       g.text(ui.fit("by " .. p.artist, 300), 10, y + 34, ui.MUTED)
-      ui.hints({ "a", "museum link", "b", "back" }, 226)
+      ui.hints({ "a", "museum link", "b", "back" })
     else
       g.text("Not found yet", 10, y + 14, ui.MUTED, 2)
       g.text("Somewhere in the dark. Keep sweeping.", 10, y + 34, ui.DIM)
-      ui.hints({ "b", "back" }, 226)
+      ui.hints({ "b", "back" })
     end
   else
     ui.tracked("SHIFT REPORT", 10, y, ui.INK, 1, 2)
     ui.paragraph("Everything you found tonight, as one code. Scan it into the museum to carry your shift over.", 10, y + 14, 300, ui.MUTED)
-    ui.hints({ "a", "show code", "b", "back" }, 226)
+    ui.hints({ "a", "show code", "b", "back" })
   end
 end
 function Record:draw()
@@ -734,8 +685,8 @@ function Map:draw()
   g.clear(ui.BG)
   local visited = util.count(record.state.rooms)
   ui.header("VISITOR MAP", visited .. " / " .. #DATA.rooms .. " ROOMS")
-  local first = math.max(1, math.min(self.sel - 4, #DATA.rooms - 9))
-  for i = first, math.min(#DATA.rooms, first + 9) do
+  local first = math.max(1, math.min(self.sel - 4, #DATA.rooms - 8))
+  for i = first, math.min(#DATA.rooms, first + 8) do
     local r = DATA.rooms[i]
     local y = 36 + (i - first) * 13
     local seen = record.state.rooms[r.idx]
@@ -747,16 +698,16 @@ function Map:draw()
     if total > 0 then g.text_right(got .. "/" .. total, 308, y, i == self.sel and ui.PAPER_INK or (got == total and ui.ACCENT or ui.DIM)) end
   end
   local r = DATA.rooms[self.sel]
-  g.fill_rect(0, 170, 320, 2, ui.INK)
-  local y = 178
+  g.fill_rect(0, 156, ui.W, 2, ui.INK)
+  local y = 164
   for _, goal in ipairs(r.goals or {}) do
     local done = record.state.goals[r.id .. "/" .. goal.id]
     g.text((done and "* " or "- ") .. goal.name:upper(), 10, y, done and ui.INK or ui.MUTED)
     if done then g.text(ui.fit(goal.text, 300), 22, y + 10, ui.MUTED) end
     y = y + (done and 22 or 12)
-    if y > 214 then break end
+    if y > 186 then break end
   end
-  ui.hints({ "b", "back" }, 228)
+  ui.hints({ "b", "back" })
 end
 function Map:button(key)
   if key == "b" then pop()
@@ -771,9 +722,9 @@ function About:draw()
   local y = 38
   y = y + ui.paragraph("M.O.S.A., the Museum of Sirius Art, is a walkable 3D archive: brutalist rooms, huge white walls, balloons that carry the work. This is its night shift.", 10, y, 300, ui.INK, 1, 11) + 8
   y = y + ui.paragraph("Sweep the rooms in the dark. Every bottle you find is a real piece in the museum, made by a real artist; its link takes you to where it stands, in full resolution, to collect it on Solana.", 10, y, 300, ui.MUTED, 1, 11) + 8
-  y = y + ui.paragraph("Blow into the badge to pop balloons. Other badges running Night Shift show up when they are near.", 10, y, 300, ui.MUTED, 1, 11)
-  g.text("v" .. BUILD.version .. "  MOSA " .. DATA.source.mosa:sub(1, 7) .. "  data schema " .. DATA.schema, 10, 206, ui.DIM)
-  ui.hints({ "a", "museum link", "b", "back" }, 226)
+  y = y + ui.paragraph("Press " .. ui.label("a") .. " by a balloon to pop it. Other badges running Night Shift show up when they are near.", 10, y, 300, ui.MUTED, 1, 11)
+  g.text("v" .. BUILD.version .. "  MOSA " .. DATA.source.mosa:sub(1, 7) .. "  data schema " .. DATA.schema, 10, 188, ui.DIM)
+  ui.hints({ "a", "museum link", "b", "back" })
 end
 function About:button(key)
   if key == "a" then push(Code.new(DATA.home, "M.O.S.A.", "The Museum of Sirius Art", "Walk in at full resolution."))
@@ -781,17 +732,19 @@ function About:button(key)
 end
 
 -- ── LEDs ─────────────────────────────────────────────────────────────────────
+-- Eight of them: six across the top, two on the right edge. Solana OS shows a
+-- change at the end of the callback and turns them off when the app closes.
 
 local led_t = 0
 local function leds(dt)
+  if not led then return end
   led_t = led_t + dt
   if led_t < 0.05 then return end
   led_t = 0
   if pulse and t < pulse[4] then
     local k = (pulse[4] - t) * 2
     if k > 1 then k = 1 end
-    led.all(math.floor(pulse[1] * k), math.floor(pulse[2] * k), math.floor(pulse[3] * k))
-    led.show()
+    led.fill(math.floor(pulse[1] * k), math.floor(pulse[2] * k), math.floor(pulse[3] * k))
     return
   end
   pulse = nil
@@ -811,41 +764,26 @@ local function leds(dt)
       local on = (t * (1 + near * 7)) % 1 < 0.45
       local r, gg, b = rgb(best.piece.tint)
       local k = on and (0.15 + near * 0.85) or 0
-      led.all(math.floor(r * k), math.floor(gg * k), math.floor(b * k))
+      led.fill(math.floor(r * k), math.floor(gg * k), math.floor(b * k))
     else
       led.off()
     end
   elseif s == Title or s == Lanyard then
+    -- The bottle on show breathes, a slow wave along the row.
     local p = DATA.pieces[s.art] or DATA.pieces[1]
     local r, gg, b = rgb(p.tint)
-    local k = 0.25 + 0.25 * math.sin(t * 1.5)
-    led.set(0, math.floor(r * k), math.floor(gg * k), math.floor(b * k))
-    k = 0.25 + 0.25 * math.sin(t * 1.5 + 1.6)
-    led.set(1, math.floor(r * k), math.floor(gg * k), math.floor(b * k))
+    for i = 1, led.count or 8 do
+      local k = 0.25 + 0.25 * math.sin(t * 1.5 + i * 0.8)
+      led.set(i, math.floor(r * k), math.floor(gg * k), math.floor(b * k))
+    end
   else
     led.off()
   end
-  led.show()
 end
 
 -- ── lifecycle ────────────────────────────────────────────────────────────────
 
-function on_start()
-  if DATA.schema ~= DATA_SCHEMA then
-    error("data schema " .. tostring(DATA.schema) .. " needs a newer app (expects " .. DATA_SCHEMA .. ")")
-  end
-  local bytes = badge.system.random_bytes(4)
-  local seed = 0
-  for i = 1, #bytes do seed = (seed << 8) | bytes:byte(i) end
-  rng = util.rng(seed ~ badge.millis())
-  record.load()
-  pcall(led.take)
-  net.start()
-  push(Splash)
-  badge.log("M.O.S.A. Night Shift " .. BUILD.version .. ", MOSA " .. DATA.source.mosa)
-end
-
-function on_update(dt)
+local function update(dt)
   t = t + dt
   idle = idle + dt
   local s = top()
@@ -857,9 +795,9 @@ function on_update(dt)
   leds(dt)
 end
 
-function on_draw()
+local function draw()
   local n = #stack
-  if n > 0 and stack[n].static and not dirty then return end
+  if n == 0 or (stack[n].static and not dirty) then return end
   dirty = false
   local first = n
   while first > 1 and stack[first].under do first = first - 1 end
@@ -871,35 +809,64 @@ function on_draw()
     local h = toast.sub and 34 or 22
     local sub = toast.sub and ui.fit(toast.sub, 290)
     local w = math.max(ui.tracked_width(toast.text, 1, 2), sub and #sub * 6 or 0) + 24
-    local x, y = (ui.W - w) // 2, 190 - h
+    local x, y = (ui.W - w) // 2, 176 - h
     ui.slab(x, y, w, h, ui.PAPER, 3)
     g.rect(x + 2, y + 2, w - 4, h - 4, ui.PAPER_INK); g.rect(x + 4, y + 4, w - 8, h - 8, ui.PAPER_INK)
     ui.tracked_center(toast.text, 160, y + 8, ui.PAPER_INK, 1, 2)
     if sub then g.text_center(sub, 160, y + 20, ui.MUTED) end
   end
+  -- The QR code belongs to the top scene; Solana OS draws it over the canvas.
+  local spec = s.qr and s:qr() or nil
+  if not g.show_qr(spec) then
+    ui.tracked("NO QR ON THIS BADGE", spec[2] + 8, spec[3] + spec[4] // 2 - 10, ui.PAPER_INK, 1, 1)
+    g.text("Update Solana OS", spec[2] + 8, spec[3] + spec[4] // 2 + 4, ui.MUTED)
+  end
 end
 
-function on_button(key, pressed)
-  if not pressed then return end
+function on_tick(ms)
+  -- Movement is by time, never by counting ticks; a stall is not a teleport.
+  local dt = ms / 1000
+  if dt > 0.1 then dt = 0.1 end
+  held = sys.keys and sys.keys() or {}
+  update(dt)
+  draw()
+end
+
+-- Solana OS names the buttons up/down/left/right/select/back; the scenes speak
+-- of "a" and "b" (kit.label prints them as SELECT and CANCEL).
+local KEYS = { select = "a", back = "b" }
+function on_key(key, rep)
+  local k = KEYS[key] or key
+  if rep and (k == "a" or k == "b") then return true end -- one press, one step back
   idle = 0
   dirty = true
   local s = top()
-  if s and s.button then s:button(key) end
+  if k == "b" and s == Title then return false end -- CANCEL at the front door leaves the app
+  if s and s.button then s:button(k) end
+  return true
 end
 
-function on_espnow(mac, data)
-  local who = net.receive(mac, data)
+function on_mesh(from, msg)
+  local who = net.receive(from, msg)
   if who then
     say(who:upper() .. " WAVED", "Another janitor is on shift nearby.", 3)
     flash(ui.ACCENT, 1.2)
   end
 end
 
-function on_stop()
+function on_exit()
   record.flush()
   net.stop()
-  pcall(led.off)
 end
+
+if DATA.schema ~= DATA_SCHEMA then
+  error("data schema " .. tostring(DATA.schema) .. " needs a newer app (expects " .. DATA_SCHEMA .. ")")
+end
+rng = util.rng(math.random(1, 0x7FFFFFFF) ~ sys.millis())
+record.load()
+net.start()
+push(Splash)
+print("M.O.S.A. Night Shift " .. BUILD.version .. ", MOSA " .. DATA.source.mosa)
 
 -- Test seam for tools/preview.mjs and test/app.test.mjs. Harmless on a badge.
 mosa_debug = {
