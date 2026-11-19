@@ -1,0 +1,28 @@
+name: drift
+# Weekly: would `pnpm sync` produce different data from MOSA main + the live API?
+# Needs a read-only token for the private MOSA repo in the MOSA_READ_TOKEN secret.
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+jobs:
+  sync-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: bparticle/mosa
+          token: ${{ secrets.MOSA_READ_TOKEN }}
+          path: .mosa
+          sparse-checkout: |
+            apps/frontend/src/lib
+            apps/frontend/public/rooms
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm sync --mosa .mosa --check
