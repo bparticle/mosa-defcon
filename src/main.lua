@@ -396,6 +396,7 @@ function Game:travel(to, from)
       room:resume(coroutine.yield)
     end
     self.px, self.py = room:arrival(from, coroutine.yield)
+    coroutine.yield() -- arriving and the first draw get a tick of their own
     return room
   end)
   self.arriving = data

@@ -53,15 +53,26 @@ local function colour(c)
   return v
 end
 
+-- Hooks are per thread in Lua: a coroutine resumed inside a callback gets the
+-- same meter, or its work would go uncounted (the badge counts it).
+local metering = false
+local co_resume = coroutine.resume
+coroutine.resume = function(co, ...)
+  if metering then host_debug.sethook(co, hook, "", 1000) end
+  return co_resume(co, ...)
+end
+
 -- Calls into the app, metered like Solana OS meters them.
 function __call(fn, ...)
   if type(fn) == "string" then fn = _G[fn] end
   if type(fn) ~= "function" then return nil end
   used = 0
   __px_reset()
+  metering = true
   host_debug.sethook(hook, "", 1000)
   local ok, res = pcall(fn, ...)
   host_debug.sethook()
+  metering = false
   if not ok then __error(tostring(res)); return nil end
   return res
 end

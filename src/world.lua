@@ -35,14 +35,27 @@ Room.__index = Room
 
 -- Laying out a room is the heaviest thing the app does, and Solana OS stops
 -- any callback that runs past 200 000 Lua instructions. So it runs as a
--- coroutine: `pause` is called between row bands and the caller spreads the
--- work over frames (main.lua shows a threshold while it does).
-local BAND = 6
+-- coroutine: `pause` is called as the work adds up and the caller spreads it
+-- over frames (main.lua shows a threshold while it does). The work is counted
+-- in cell lookups, not rows: a wide room has long rows, and the badge counts
+-- every instruction a coroutine runs against the tick that resumed it.
+local SLICE = 1000 -- cell lookups per tick, about 25 000 instructions
+
+--- A meter for `pause`: charge it the lookups done, and it pauses when a
+--- slice is spent. Without a pause (a plain call) it never stops.
+local function pacer(pause)
+  if not pause then return function() end end
+  local spent = 0
+  return function(n)
+    spent = spent + n
+    if spent >= SLICE then spent = 0; pause() end
+  end
+end
 
 --- Lay out the grid (floor, doors, landmarks, walls) from synced data.
 --- Pure function of the data, so a suspended room can be re-laid on return.
 function Room:lay(pause)
-  pause = pause or function() end
+  local charge = pacer(pause)
   local data, w, h = self.data, self.w, self.h
   local cells, door_at, mark_at, art_at = {}, {}, {}, {}
   for i = 1, w * h do cells[i] = VOID end
@@ -71,7 +84,7 @@ function Room:lay(pause)
     art_at[i] = a
     if not a.s and cells[i] == FLOOR then cells[i] = PANEL end
   end
-  pause()
+  charge(SLICE)
   -- Walls: every void cell touching something you can stand next to.
   for y = 0, h - 1 do
     local row = y * w
@@ -86,7 +99,7 @@ function Room:lay(pause)
         end
       end
     end
-    if y % BAND == BAND - 1 then pause() end
+    charge(w * 10)
   end
   -- What the torch has already shown, one byte per tile ("1" = seen).
   local explored, seen = {}, self.seen
@@ -120,7 +133,7 @@ end
 ---   opts.works     work idx -> synced work, for what hangs here
 ---   opts.heist     a work idx a thief has taken from this room tonight, or nil
 function world.build(data, opts)
-  local pause = opts.pause or function() end
+  local charge = pacer(opts.pause)
   local rng = opts.rng
   local w, h = data.w, data.h
   local r = setmetatable({ data = data, w = w, h = h, bottles = {}, art = {} }, Room)
@@ -128,7 +141,7 @@ function world.build(data, opts)
     local work = opts.works[a.w]
     if work then r.art[#r.art + 1] = { x = a.x, y = a.y, s = a.s, work = work, missing = opts.heist == a.w } end
   end
-  r:lay(pause)
+  r:lay(opts.pause)
 
   -- Free floor cells (as flat indices), for bottles and the thief.
   local free = {}
@@ -136,7 +149,7 @@ function world.build(data, opts)
     for x = 0, w - 1 do
       if r.cells[y * w + x + 1] == FLOOR and not r:near_door(x, y, 2) then free[#free + 1] = y * w + x end
     end
-    if y % BAND == BAND - 1 then pause() end
+    charge(w * (1 + 2 * #data.doors))
   end
   local taken = {}
   local function spot()
@@ -207,21 +220,27 @@ end
 
 --- Where to stand when arriving through the door that leads back to `from`.
 function Room:arrival(from, pause)
-  pause = pause or function() end
   local door
   for _, d in ipairs(self.data.doors) do if d.to == from then door = d; break end end
   if not door then
-    -- No door back (a one-way warp, or the first room): the most open floor cell.
+    -- No door back (a teleport, or the first room): the most open floor cell,
+    -- the one with the most floor in the 5x5 around it. Rows are read straight
+    -- from the grid (a 92-wide room is 2 300 lookups a row), metered by `pause`.
+    local charge = pacer(pause)
+    local cells, w, h = self.cells, self.w, self.h
     local best, bx, by = -1, 1, 1
-    for y = 1, self.h - 2 do
-      for x = 1, self.w - 2 do
-        if self:cell(x, y) == FLOOR then
+    for y = 2, h - 3 do
+      for x = 2, w - 3 do
+        if cells[y * w + x + 1] == FLOOR then
           local n = 0
-          for dy = -2, 2 do for dx = -2, 2 do if self:cell(x + dx, y + dy) == FLOOR then n = n + 1 end end end
+          for dy = -2, 2 do
+            local row = (y + dy) * w + x + 1
+            for i = row - 2, row + 2 do if cells[i] == FLOOR then n = n + 1 end end
+          end
           if n > best then best, bx, by = n, x, y end
         end
       end
-      if y % 3 == 2 then pause() end
+      charge(w * 26)
     end
     return bx + 0.5, by + 0.5
   end
@@ -304,6 +323,11 @@ end
 --- A thief arriving through the door from `from` (one that got away next door).
 function Room:let_in(work, from)
   if not self.cells then self.incoming = { work, from }; return end
+  -- Always through a door: this runs inside a tick, with no pause to spread
+  -- the open-floor search over.
+  local back = false
+  for _, d in ipairs(self.data.doors) do if d.to == from then back = true end end
+  if not back and self.data.doors[1] then from = self.data.doors[1].to end
   local x, y = self:arrival(from)
   self.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0.6, seen = false }
 end

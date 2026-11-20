@@ -5,6 +5,14 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-20
+
+### Fixed
+
+- Teleporting into a wide room no longer stops the app with "script took too
+  long". Laying out a room is now paced by the work it does, not by rows, and
+  the search for an open spot to land on is lighter.
+
 ## [0.4.1] - 2026-11-20
 
 ### Fixed
@@ -178,7 +186,8 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.4.1...HEAD
+[Unreleased]: ../../compare/v0.4.2...HEAD
+[0.4.2]: ../../compare/v0.4.1...v0.4.2
 [0.4.1]: ../../compare/v0.4.0...v0.4.1
 [0.4.0]: ../../compare/v0.3.0...v0.4.0
 [0.3.0]: ../../compare/v0.2.0...v0.3.0
