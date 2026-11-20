@@ -44,7 +44,7 @@ and `/app/<path>`, with CORS headers, for tools that load it into the emulator
 page.
 
 Walk through at least: splash → title → CLOCK IN → walk a room → CANCEL
-(clipboard) → SHIFT RECORD → SHOW SHIFT REPORT (a real QR code), and LANYARD
+(clipboard) → BOTTLES → SHOW SHIFT REPORT (a real QR code), and LANYARD
 from the title.
 
 ## What the firmware checked

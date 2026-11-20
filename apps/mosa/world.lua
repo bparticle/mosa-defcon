@@ -2,36 +2,41 @@
 --
 -- A room's floor is MOSA's own claim volumes rasterised by the sync (rects in
 -- tile units); doors are its portals; the furniture is its vitrines, boards
--- and machines. Nothing here knows any particular room: a new room in
+-- and machines; the works hang where the HD museum hangs them and the bottles
+-- lie on its find spots. Nothing here knows any particular room: a new room in
 -- MOSA-ROOMS.blend appears on the badge after `pnpm sync` with no code change.
 --
--- Rendering is a flashlight: a small pool of light around the janitor and a
--- cone ahead of them. Tiles once seen stay faintly remembered.
+-- Rendering is a flashlight (light.lua): the lit room inside one cone and a
+-- small pool at the janitor's feet, darkness outside. Tiles once seen stay as
+-- a faint memory, and the exits always show, so nobody is lost in the dark.
 local g = require("gfx")
 local ui = require("kit")
+local light = require("light")
+local sprites = require("sprites")
 
 local world = {}
 
 local TILE = 14
 world.TILE = TILE
-local VOID, FLOOR, DOOR, BLOCK, WALL = 0, 1, 2, 3, 4
+local VOID, FLOOR, DOOR, BLOCK, WALL, PANEL = 0, 1, 2, 3, 4, 5
 
--- Light levels 0 (remembered) .. 3 (full). Concrete floor, white walls.
-local FLOOR_C = { [0] = g.color(20, 20, 20), g.color(36, 35, 34), g.color(60, 58, 55), g.color(92, 89, 84) }
-local WALL_C = { [0] = g.color(38, 38, 38), g.color(84, 82, 79), g.color(150, 147, 141), g.color(226, 222, 213) }
-local MARK_C = { [0] = g.color(28, 28, 30), g.color(48, 50, 52), g.color(78, 82, 86), g.color(120, 126, 132) }
-local SEAM_C = g.color(14, 14, 14)
--- The south face of a wall, so walls stand up off the floor like cast slabs.
-local FACE_C = { [0] = g.color(26, 26, 26), g.color(54, 53, 51), g.color(98, 96, 92), g.color(158, 155, 148) }
+-- Lit: poured concrete and white walls, flat, the way a torch shows them.
+local FLOOR_L, SEAM_L = g.color(96, 93, 88), g.color(78, 76, 72)
+local WALL_L, FACE_L = g.color(228, 224, 215), g.color(160, 157, 150)
+local MARK_L, MARK_EDGE = g.color(122, 128, 134), ui.MUTED
+-- Remembered: just enough to know where the walls were.
+local FLOOR_M, WALL_M, FACE_M = g.color(17, 17, 18), g.color(36, 36, 35), g.color(25, 25, 25)
+
+-- The cone: 6.8 tiles long, 48 degrees wide; a pool of 1.5 tiles round the feet.
+local REACH, HALF, POOL = 6.8 * TILE, 0.42, 1.5 * TILE
 
 local Room = {}
 Room.__index = Room
 
 -- Laying out a room is the heaviest thing the app does, and Solana OS stops
 -- any callback that runs past 200 000 Lua instructions. So it runs as a
--- coroutine: `pause` is
--- called between row bands and the caller spreads the work over frames
--- (main.lua shows a threshold while it does).
+-- coroutine: `pause` is called between row bands and the caller spreads the
+-- work over frames (main.lua shows a threshold while it does).
 local BAND = 6
 
 --- Lay out the grid (floor, doors, landmarks, walls) from synced data.
@@ -39,7 +44,7 @@ local BAND = 6
 function Room:lay(pause)
   pause = pause or function() end
   local data, w, h = self.data, self.w, self.h
-  local cells, door_at, mark_at = {}, {}, {}
+  local cells, door_at, mark_at, art_at = {}, {}, {}, {}
   for i = 1, w * h do cells[i] = VOID end
   for _, rect in ipairs(data.rects) do
     for y = math.max(0, rect[2]), math.min(h - 1, rect[2] + rect[4] - 1) do
@@ -60,13 +65,19 @@ function Room:lay(pause)
       end
     end
   end
+  -- A work with no wall beside it hangs on a free-standing panel.
+  for _, a in ipairs(self.art) do
+    local i = a.y * w + a.x + 1
+    art_at[i] = a
+    if not a.s and cells[i] == FLOOR then cells[i] = PANEL end
+  end
   pause()
   -- Walls: every void cell touching something you can stand next to.
   for y = 0, h - 1 do
     local row = y * w
     for x = 0, w - 1 do
       local c = cells[row + x + 1]
-      if c == FLOOR or c == DOOR or c == BLOCK then
+      if c ~= VOID and c ~= WALL then
         for ny = math.max(0, y - 1), math.min(h - 1, y + 1) do
           local nrow = ny * w + 1
           for nx = math.max(0, x - 1), math.min(w - 1, x + 1) do
@@ -80,32 +91,43 @@ function Room:lay(pause)
   -- What the torch has already shown, one byte per tile ("1" = seen).
   local explored, seen = {}, self.seen
   for i = 1, w * h do explored[i] = seen ~= nil and seen:byte(i) == 49 end
-  self.cells, self.door_at, self.mark_at, self.explored, self.seen = cells, door_at, mark_at, explored, nil
+  self.cells, self.door_at, self.mark_at, self.art_at = cells, door_at, mark_at, art_at
+  self.explored, self.seen = explored, nil
 end
 
---- Leaving a room: keep what is in it (bottles, balloons) but give back the
---- grid. Only the current room is laid out: the heap stays small and the
--- collector has little to walk.
+--- Leaving a room: keep what is in it (bottles, works, a thief) but give back
+--- the grid. Only the current room is laid out: the heap stays small and the
+--- collector has little to walk.
 function Room:suspend()
   if not self.cells then return end
   local parts = {}
   for i = 1, self.w * self.h do parts[i] = self.explored[i] and "1" or "0" end
   self.seen = table.concat(parts)
-  self.cells, self.explored, self.door_at, self.mark_at = nil, nil, nil, nil
+  self.cells, self.explored, self.door_at, self.mark_at, self.art_at = nil, nil, nil, nil, nil
+  for _, a in ipairs(self.art) do a.mini = nil end
 end
 
 function Room:resume(pause)
   if not self.cells then self:lay(pause) end
 end
 
---- Build a playable room from synced data. `stock` picks what litters it.
-function world.build(data, rng, stock, pause)
-  pause = pause or function() end
+--- Build a playable room from synced data.
+---   opts.rng, opts.pause
+---   opts.stock()   picks the next bottle that litters it
+---   opts.works     work idx -> synced work, for what hangs here
+---   opts.heist     a work idx a thief has taken from this room tonight, or nil
+function world.build(data, opts)
+  local pause = opts.pause or function() end
+  local rng = opts.rng
   local w, h = data.w, data.h
-  local r = setmetatable({ data = data, w = w, h = h, bottles = {}, balloons = {}, debris = {} }, Room)
+  local r = setmetatable({ data = data, w = w, h = h, bottles = {}, art = {} }, Room)
+  for _, a in ipairs(data.art or {}) do
+    local work = opts.works[a.w]
+    if work then r.art[#r.art + 1] = { x = a.x, y = a.y, s = a.s, work = work, missing = opts.heist == a.w } end
+  end
   r:lay(pause)
 
-  -- Free floor cells (as flat indices), for scattering bottles and balloons.
+  -- Free floor cells (as flat indices), for bottles and the thief.
   local free = {}
   for y = 0, h - 1 do
     for x = 0, w - 1 do
@@ -121,16 +143,29 @@ function world.build(data, rng, stock, pause)
     end
     return nil
   end
+  -- Bottles lie on the HD museum's own find spots first, in a shuffled order.
+  local spots = {}
+  for _, s in ipairs(data.spots or {}) do
+    local i = s[2] * w + s[1]
+    if r.cells[i + 1] == FLOOR and not taken[i] then spots[#spots + 1] = i end
+  end
+  for i = #spots, 2, -1 do
+    local j = rng:int(i)
+    spots[i], spots[j] = spots[j], spots[i]
+  end
   if #free > 0 then
-    for _ = 1, data.bottles do
-      local piece = stock()
-      local x, y = spot()
+    for n = 1, data.bottles do
+      local piece = opts.stock()
+      local x, y
+      local s = spots[n]
+      if s then taken[s] = true; x, y = s % w + 0.5, s // w + 0.5 else x, y = spot() end
       if piece and x then r.bottles[#r.bottles + 1] = { x = x, y = y, piece = piece } end
     end
-    for _ = 1, data.balloons do
+    if opts.heist then
+      local work = opts.works[opts.heist]
       local x, y = spot()
-      if x then
-        r.balloons[#r.balloons + 1] = { x = x, y = y, phase = rng:float() * 6.28, colour = g.hsv(rng:int(360) - 1, 0.55, 0.95) }
+      if work and x then
+        r.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0, seen = false }
       end
     end
   end
@@ -152,6 +187,19 @@ end
 function Room:walkable(x, y)
   local c = self:cell(math.floor(x), math.floor(y))
   return c == FLOOR or c == DOOR
+end
+
+--- Can a body of radius r stand at (x, y)?
+function Room:fits(x, y, r)
+  return self:walkable(x - r, y - r) and self:walkable(x + r, y - r)
+    and self:walkable(x - r, y + r) and self:walkable(x + r, y + r)
+end
+
+--- Move a body by (dx, dy), sliding along walls. Returns the new position.
+function Room:slide(x, y, dx, dy, r)
+  if self:fits(x + dx, y, r) then x = x + dx end
+  if self:fits(x, y + dy, r) then y = y + dy end
+  return x, y
 end
 
 --- Where to stand when arriving through the door that leads back to `from`.
@@ -205,6 +253,17 @@ function Room:mark_near(x, y)
   return nil
 end
 
+--- The work within reach of (x, y): hung beside the tile you stand on or next to.
+function Room:art_near(x, y)
+  local best, bd = nil, 2.6
+  for _, a in ipairs(self.art) do
+    local dx, dy = a.x + 0.5 - x, a.y + 0.5 - y
+    local d = dx * dx + dy * dy
+    if d < bd then best, bd = a, d end
+  end
+  return best
+end
+
 function Room:nearest_door(x, y, radius)
   local best, bd = nil, radius * radius
   for _, d in ipairs(self.data.doors) do
@@ -215,58 +274,65 @@ function Room:nearest_door(x, y, radius)
   return best
 end
 
-function Room:balloons_left()
-  local n = 0
-  for _, b in ipairs(self.balloons) do if not b.popped then n = n + 1 end end
-  return n
-end
+-- ── the thief ───────────────────────────────────────────────────────────────
+-- A thief creeps about the dark with a work under one arm. In the light they
+-- are dazzled: slow, and running from the janitor. Held in the beam long
+-- enough (HEAT seconds), they drop the work and bolt.
 
---- Pop a balloon: debris flies, and sometimes a bottle falls out.
-function Room:pop(b, rng, stock)
-  b.popped = true
-  for i = 1, 10 do
-    local a = i * 0.628 + rng:float()
-    local s = 2 + rng:float() * 3
-    self.debris[#self.debris + 1] = { x = b.x, y = b.y - 0.3, vx = math.cos(a) * s, vy = math.sin(a) * s, life = 0.6, colour = b.colour }
-  end
-  if rng:float() < 0.35 then
-    local piece = stock()
-    if piece then self.bottles[#self.bottles + 1] = { x = b.x, y = b.y, piece = piece, dropped = 0.4 } end
-  end
-end
+local SNEAK, DAZZLED, HEAT = 1.7, 1.25, 0.8
 
-function Room:update(dt)
-  for i = #self.debris, 1, -1 do
-    local d = self.debris[i]
-    d.life = d.life - dt
-    if d.life <= 0 then table.remove(self.debris, i)
-    else
-      d.x, d.y = d.x + d.vx * dt, d.y + d.vy * dt
-      d.vx, d.vy = d.vx * 0.9, d.vy * 0.9 + 6 * dt
+--- Advance the thief; returns "caught" the moment they give up.
+function Room:update_thief(dt, jx, jy, lit, rng)
+  local th = self.thief
+  if not th or th.gone then return nil end
+  if th.caught then
+    th.caught = th.caught - dt
+    if th.caught <= 0 then th.gone = true end
+    return nil
+  end
+  local speed = SNEAK
+  if lit then
+    th.seen = true
+    th.heat = th.heat + dt
+    speed = DAZZLED
+    -- Away from the janitor, with a little sideways wobble.
+    local dx, dy = th.x - jx, th.y - jy
+    local d = math.sqrt(dx * dx + dy * dy)
+    if d > 0.01 then th.fx, th.fy = dx / d, dy / d end
+    if th.heat >= HEAT then
+      th.caught = 0.6
+      return "caught"
+    end
+  else
+    th.heat = math.max(0, th.heat - dt * 0.5)
+    th.turn = th.turn - dt
+    if th.turn <= 0 then
+      th.turn = 0.8 + rng:float() * 1.6
+      local a = rng:float() * 6.283
+      th.fx, th.fy = math.cos(a), math.sin(a)
     end
   end
-  for _, b in ipairs(self.bottles) do
-    if b.dropped then b.dropped = b.dropped - dt; if b.dropped <= 0 then b.dropped = nil end end
+  local ox, oy = th.x, th.y
+  th.x, th.y = self:slide(th.x, th.y, th.fx * speed * dt, th.fy * speed * dt, 0.3)
+  local moved = math.abs(th.x - ox) + math.abs(th.y - oy)
+  if moved < speed * dt * 0.3 then
+    -- Cornered: turn and try another way next tick.
+    local a = rng:float() * 6.283
+    th.fx, th.fy, th.turn = math.cos(a), math.sin(a), 0.5
   end
+  th.step = th.step + moved
+  return nil
 end
 
--- ── the flashlight ──────────────────────────────────────────────────────────
-
-local function light_at(dx, dy, fx, fy)
-  local d2 = dx * dx + dy * dy
-  if d2 < 3.2 then return 3 end
-  if d2 > 72 then return 0 end
-  local d = math.sqrt(d2)
-  local dot = (dx * fx + dy * fy) / d
-  if dot > 0.8 then -- the torch beam
-    if d < 4.5 then return 3 elseif d < 6.5 then return 2 else return 1 end
-  elseif dot > 0.55 and d < 5.5 then
-    return d < 3.5 and 2 or 1
-  end
-  if d2 < 6.5 then return 2 end
-  if d2 < 11 then return 1 end
-  return 0
+--- A work's frame-sized miniature: n x n colours sampled from its sprite,
+--- made when the room is laid out and dropped when it is left.
+local function mini(a, n)
+  if a.mini then return a.mini end
+  a.mini = ui.sample(a.work, n)
+  return a.mini
 end
+
+-- ── drawing ─────────────────────────────────────────────────────────────────
 
 --- Camera: top-left of the view in pixels, centred on the janitor.
 function Room:camera(px, py)
@@ -277,61 +343,268 @@ function Room:camera(px, py)
   return cx, cy
 end
 
---- Draw the room around a janitor at (px, py) facing (fx, fy).
-local light = {} -- reused every frame: cell index → light level
-function Room:draw(px, py, fx, fy, t)
+-- The lit room is drawn a scanline at a time, but all TILE scanlines of a
+-- tile row cross the same tiles. So each tile row is turned once into colour
+-- runs, one list per kind of scanline (plain, a pour seam, a board mark, a
+-- wall's face), plus the insides of its doors, landmarks and panels; a
+-- scanline then only clips its list to the light. A frame of light is a few
+-- hundred rects.
+local hline = g.hline
+local PLAIN, SEAM, BOARD, FACE = 1, 2, 3, 4
+
+-- One kind of scanline across a tile row, as runs { x0, x1, colour, ... }.
+local function build(tr, kind)
+  local cells, w, row, cx = tr.cells, tr.w, tr.row, tr.cx
+  local list, run_c, run_x, n = {}, nil, 0, 0
+  for tx = tr.tx0, tr.tx1 do
+    local i = row + tx
+    local c = cells[i]
+    local col
+    if c == WALL then
+      col = WALL_L
+      if kind == BOARD then col = FACE_L
+      elseif kind == FACE then
+        local below = cells[i + w]
+        if below and below ~= WALL then col = FACE_L end
+      end
+    elseif c ~= VOID then
+      col = kind == SEAM and SEAM_L or FLOOR_L
+    end
+    if col ~= run_c then
+      local sx = tx * TILE - cx
+      if run_c then list[n + 1], list[n + 2], list[n + 3] = run_x, sx - 1, run_c; n = n + 3 end
+      run_x, run_c = sx, col
+    end
+  end
+  if run_c then list[n + 1], list[n + 2], list[n + 3] = run_x, (tr.tx1 + 1) * TILE - cx - 1, run_c end
+  return list
+end
+
+-- A tile row between tx0 and tx1: its insides now, its runs as they're needed
+-- (a row with no wall in it draws every kind of line the same way).
+local function tile_row(self, ty, tx0, tx1, cx)
+  local cells, w = self.cells, self.w
+  local row = ty * w + 1
+  local tr = { cells = cells, w = w, row = row, cx = cx, tx0 = tx0, tx1 = tx1, insides = {} }
+  local walls, ins = false, tr.insides
+  for tx = tx0, tx1 do
+    local c = cells[row + tx]
+    if c == WALL then walls = true
+    elseif c == BLOCK or c == PANEL or c == DOOR then
+      local sx = tx * TILE - cx
+      ins[#ins + 1] = sx; ins[#ins + 1] = sx + TILE - 1; ins[#ins + 1] = c
+    end
+  end
+  tr.walls = walls
+  return tr
+end
+
+local function runs_for(tr, kind)
+  if not tr.walls and (kind == BOARD or kind == FACE) then kind = PLAIN end
+  local list = tr[kind]
+  if not list then list = build(tr, kind); tr[kind] = list end
+  return list
+end
+
+local function inside_colour(c, r)
+  local inset = c == DOOR and 2 or 1
+  if r < inset or r > TILE - 1 - inset then return nil, inset end
+  if c == DOOR then return (r >= 5 and r <= 8) and ui.ACCENT or ui.DIM, inset end
+  if c == PANEL then return ui.CONC, inset end
+  return (r == inset or r == TILE - 1 - inset) and MARK_EDGE or MARK_L, inset
+end
+
+-- One lit scanline (or h identical ones): the tile row's runs for this kind
+-- of line, clipped to [xa, xb].
+local function lit_span(tr, kind, r, yy, xa, xb, h)
+  local list, insides = runs_for(tr, kind), tr.insides
+  for k = 1, #list, 3 do
+    local x0, x1 = list[k], list[k + 1]
+    if x1 >= xa and x0 <= xb then
+      if x0 < xa then x0 = xa end
+      if x1 > xb then x1 = xb end
+      hline(x0, yy, x1 - x0 + 1, list[k + 2], h)
+    end
+  end
+  for k = 1, #insides, 3 do
+    local col, inset = inside_colour(insides[k + 2], r)
+    if col then
+      local x0, x1 = insides[k] + inset, insides[k + 1] - inset
+      if x1 >= xa and x0 <= xb then
+        if x0 < xa then x0 = xa end
+        if x1 > xb then x1 = xb end
+        hline(x0, yy, x1 - x0 + 1, col, h)
+      end
+    end
+  end
+end
+
+local function line_kind(r, ty)
+  if r == 0 and ty % 3 == 0 then return SEAM elseif r == 4 then return BOARD elseif r >= TILE - 5 then return FACE end
+  return PLAIN
+end
+
+-- Can scanline r + 1 of this tile row be drawn as a copy of scanline r?
+local function same_next(insides, r, ty)
+  if r >= TILE - 1 or line_kind(r, ty) ~= line_kind(r + 1, ty) then return false end
+  for k = 3, #insides, 3 do
+    if inside_colour(insides[k], r) ~= inside_colour(insides[k], r + 1) then return false end
+  end
+  return true
+end
+
+-- Where a work hangs on screen: the middle of its wall tile, nudged toward
+-- the floor it faces; on its own tile when it hangs on a panel.
+local SIDE = { n = { 0, -1 }, s = { 0, 1 }, e = { 1, 0 }, w = { -1, 0 } }
+local function hang_at(a, cx, cy)
+  local d = SIDE[a.s]
+  local x, y = a.x * TILE - cx + TILE // 2, a.y * TILE - cy + TILE // 2
+  if d then x, y = x + d[1] * (TILE - 3), y + d[2] * (TILE - 3) end
+  return x, y
+end
+
+local function draw_frame(a, x, y)
+  if a.missing then
+    -- The empty frame: a pale outline round a dark rectangle, and the nail.
+    g.rect(x - 5, y - 5, 11, 11, ui.MUTED)
+    g.fill_rect(x - 4, y - 4, 9, 9, ui.BG)
+    g.pixel(x, y - 3, ui.INK)
+    return
+  end
+  g.fill_rect(x - 6, y - 6, 13, 13, ui.SHADOW)
+  g.rect(x - 5, y - 5, 11, 11, ui.PAPER)
+  local m = mini(a, 9)
+  for j = 0, 8 do
+    for i = 0, 8 do g.fill_rect(x - 4 + i, y - 4 + j, 1, 1, m[j * 9 + i + 1]) end
+  end
+end
+
+--- Draw the room around a janitor at (px, py) facing (fx, fy). `walk` is the
+--- janitor's stride (0, 1, 2). Returns the light, for asking what it shows.
+function Room:draw(px, py, fx, fy, t, walk)
   local cx, cy = self:camera(px, py)
   local x0, y0 = math.max(0, cx // TILE), math.max(0, cy // TILE)
   local x1, y1 = math.min(self.w - 1, (cx + ui.W) // TILE), math.min(self.h - 1, (cy + ui.H) // TILE)
-  for k in pairs(light) do light[k] = nil end
-  local w = self.w
+  local w, cells, explored = self.w, self.cells, self.explored
+
+  -- The memory: what the torch has shown before, barely there. Runs of the
+  -- same kind along a tile row are one rect.
   for y = y0, y1 do
     local sy = y * TILE - cy
+    local row = y * w + 1
+    local run_x, run_c = 0, nil
+    for x = x0, x1 + 1 do
+      local i = row + x
+      local c = x <= x1 and cells[i] or VOID
+      local col
+      if c ~= VOID and explored[i] then col = c == WALL and WALL_M or FLOOR_M end
+      if col ~= run_c then
+        local sx = x * TILE - cx
+        if run_c then g.fill_rect(run_x, sy, sx - run_x, TILE, run_c) end
+        run_x, run_c = sx, col
+      end
+    end
     for x = x0, x1 do
-      local i = y * w + x + 1
-      local c = self.cells[i]
-      if c ~= VOID then
-        local l = light_at(x + 0.5 - px, y + 0.5 - py, fx, fy)
-        if l > 0 then self.explored[i] = true end
-        light[i] = l
-        if l > 0 or self.explored[i] then
-          local sx = x * TILE - cx
-          if c == WALL then
-            g.fill_rect(sx, sy, TILE, TILE, WALL_C[l])
-            if l >= 2 then g.line(sx, sy + 4, sx + TILE - 1, sy + 4, FACE_C[l]) end -- board marks
-            local below = self.cells[i + w]
-            if below and below ~= WALL then g.fill_rect(sx, sy + TILE - 5, TILE, 5, FACE_C[l]) end
-          else
-            g.fill_rect(sx, sy, TILE, TILE, FLOOR_C[l])
-            if l >= 2 and y % 3 == 0 then g.line(sx, sy, sx + TILE - 1, sy, SEAM_C) end -- concrete pour seams
-            if c == BLOCK then
-              g.fill_rect(sx + 1, sy + 1, TILE - 2, TILE - 2, MARK_C[l])
-              if l == 3 then g.rect(sx + 1, sy + 1, TILE - 2, TILE - 2, ui.MUTED) end
-            elseif c == DOOR then
-              -- A threshold: a lit strip and a notch of accent when close.
-              g.fill_rect(sx + 2, sy + 2, TILE - 4, TILE - 4, l >= 2 and ui.DIM or FLOOR_C[0])
-              if l == 3 then g.fill_rect(sx + 5, sy + 5, 4, 4, ui.ACCENT) end
-            end
+      local i = row + x
+      if cells[i] == WALL and explored[i] then
+        local below = cells[i + w]
+        if below and below ~= WALL then g.fill_rect(x * TILE - cx, sy + TILE - 5, TILE, 5, FACE_M) end
+      end
+    end
+  end
+
+  -- The light, from the lens in the janitor's hand.
+  local face = sprites.facing(fx, fy)
+  local jx, jy = math.floor(px * TILE) - cx, math.floor(py * TILE) - cy
+  local hx, hy = sprites.hand(face)
+  local L = light.new(jx + hx + fx * 4, jy + hy + fy * 4, fx, fy, REACH, HALF, jx, jy - 5, POOL)
+  local top, bottom = math.max(0, L.top), math.min(ui.H - 1, L.bottom)
+  local lx0 = math.max(x0, (math.floor(math.min(L.ax - L.reach, L.px - L.pool)) + cx) // TILE)
+  local lx1 = math.min(x1, (math.ceil(math.max(L.ax + L.reach, L.px + L.pool)) + cx) // TILE)
+  local cur, runs, lo, hi = -1, nil, 9999, -9999
+  local function remember()
+    -- Everything the light crossed on the tile row just finished.
+    if cur >= 0 and lo <= hi then
+      local row = cur * w + 1
+      for tx = math.max(0, (lo + cx) // TILE), math.min(w - 1, (hi + cx) // TILE) do explored[row + tx] = true end
+    end
+  end
+  -- Scanlines go two at a time where the second would repeat the first: the
+  -- cone's edge steps by two pixels, which the pixel art doesn't mind.
+  local yy = top
+  while yy <= bottom do
+    local ty = (yy + cy) // TILE
+    if ty ~= cur then
+      remember()
+      cur, lo, hi = ty, 9999, -9999
+      runs = nil
+      if ty >= 0 and ty < self.h then
+        -- Only the tiles the light reaches on this row: its widest at the
+        -- band's top, middle or bottom (each part of the light is round or straight).
+        local band = ty * TILE - cy
+        local e0, e1 = 9999, -9999
+        for _, sy in ipairs({ band, band + TILE // 2, band + TILE - 1 }) do
+          local p, q, p2, q2 = light.row(L, math.max(top, math.min(bottom, sy)))
+          if p then
+            if p < e0 then e0 = p end
+            if (q2 or q) > e1 then e1 = q2 or q end
           end
+        end
+        local tx0 = math.max(lx0, (e0 - 8 + cx) // TILE)
+        local tx1 = math.min(lx1, (e1 + 8 + cx) // TILE)
+        if tx0 <= tx1 then runs = tile_row(self, ty, tx0, tx1, cx) end
+      end
+    end
+    local r = (yy + cy) % TILE
+    local h = 1
+    if runs and yy < bottom and same_next(runs.insides, r, ty) then h = 2 end
+    if runs then
+      local a1, b1, a2, b2 = light.row(L, yy)
+      if a1 then
+        local kind = line_kind(r, ty)
+        if a1 < 0 then a1 = 0 end
+        if b1 > ui.W - 1 then b1 = ui.W - 1 end
+        lit_span(runs, kind, r, yy, a1, b1, h)
+        if a1 < lo then lo = a1 end
+        if b1 > hi then hi = b1 end
+        if a2 then
+          if a2 < 0 then a2 = 0 end
+          if b2 > ui.W - 1 then b2 = ui.W - 1 end
+          lit_span(runs, kind, r, yy, a2, b2, h)
+          if a2 < lo then lo = a2 end
+          if b2 > hi then hi = b2 end
         end
       end
     end
+    yy = yy + h
+  end
+  remember()
+
+  -- Exits glow in the dark like exit signs, so the way out is never lost.
+  for _, d in ipairs(self.data.doors) do
+    local sx, sy = d.x * TILE - cx, d.y * TILE - cy
+    if sx > -TILE and sx < ui.W and sy > -TILE and sy < ui.H and not light.lit(L, sx + 7, sy + 7) then
+      g.fill_rect(sx + 5, sy + 6, 4, 2, ui.ACCENT)
+    end
+  end
+
+  -- Works on the walls, in the light.
+  for _, a in ipairs(self.art) do
+    local sx, sy = hang_at(a, cx, cy)
+    if sx > -8 and sx < ui.W + 8 and sy > -8 and sy < ui.H + 8 and light.lit(L, sx, sy) then draw_frame(a, sx, sy) end
   end
 
   -- Bottles: drawn when lit; a far glint every couple of seconds otherwise,
   -- so the dark always has something to walk toward.
   for _, b in ipairs(self.bottles) do
     if not b.taken then
-      local tx, ty = math.floor(b.x), math.floor(b.y)
-      local l = light[ty * w + tx + 1] or 0
       local sx, sy = math.floor(b.x * TILE) - cx, math.floor(b.y * TILE) - cy
-      local lift = b.dropped and math.floor(b.dropped * 20) or 0
-      if l >= 1 then
+      if light.lit(L, sx, sy) then
         local col = b.piece.tint
-        g.fill_rect(sx - 3, sy - 3 - lift, 7, 8, col)
-        g.fill_rect(sx - 1, sy - 7 - lift, 3, 4, col)
-        g.fill_rect(sx - 1, sy - 8 - lift, 3, 1, ui.INK)
-        if l == 3 then g.fill_rect(sx - 2, sy - 2 - lift, 1, 4, ui.INK) end
+        g.fill_rect(sx - 3, sy - 3, 7, 8, col)
+        g.fill_rect(sx - 1, sy - 7, 3, 4, col)
+        g.fill_rect(sx - 1, sy - 8, 3, 1, ui.INK)
+        g.fill_rect(sx - 2, sy - 2, 1, 4, ui.INK)
       else
         local dx, dy = b.x - px, b.y - py
         if dx * dx + dy * dy < 196 and (t + b.x * 0.37) % 2.2 < 0.12 then
@@ -342,33 +615,50 @@ function Room:draw(px, py, fx, fy, t)
     end
   end
 
-  -- Balloons bob on their strings.
-  for _, b in ipairs(self.balloons) do
-    if not b.popped then
-      local tx, ty = math.floor(b.x), math.floor(b.y)
-      local l = light[ty * w + tx + 1] or 0
-      if l >= 1 then
-        local sx = math.floor(b.x * TILE) - cx
-        local sy = math.floor(b.y * TILE + math.sin(t * 2 + b.phase) * 2) - cy - 6
-        g.line(sx, sy + 6, sx + 2, sy + 13, ui.MUTED)
-        g.fill_circle(sx, sy, 6, b.colour)
-        g.fill_rect(sx - 3, sy - 3, 2, 2, ui.INK)
+  -- The thief: seen only in the light. In the dark, now and then, two eyes.
+  local th = self.thief
+  local behind = th and not th.gone and th.y < py
+  local function draw_thief()
+    local sx, sy = math.floor(th.x * TILE) - cx, math.floor(th.y * TILE) - cy
+    if th.caught then
+      -- Gone in a scatter of dust, the work left behind.
+      local k = math.floor((0.6 - th.caught) * 30)
+      for i = 0, 5 do
+        local a = i * 1.047
+        g.fill_rect(sx + math.floor(math.cos(a) * k), sy - 8 + math.floor(math.sin(a) * k), 2, 2, ui.MUTED)
+      end
+      return
+    end
+    if light.lit(L, sx, sy - 6) then
+      local stride = (th.step * 3) // 1 % 4
+      local tface = sprites.facing(th.fx, th.fy)
+      sprites.draw("thief", tface, stride == 1 and 1 or (stride == 3 and 2 or 0), sx, sy)
+      -- The loot: the stolen work, frame and all, under an arm.
+      local lx = sx + (tface == "left" and -9 or 4)
+      g.rect(lx, sy - 11, 6, 7, ui.PAPER)
+      g.fill_rect(lx + 1, sy - 10, 4, 5, th.work.tint)
+    elseif (t * 0.7 + th.x) % 3 < 0.35 then
+      local dx, dy = th.x - px, th.y - py
+      if dx * dx + dy * dy < 81 then
+        g.pixel(sx - 2, sy - 11, ui.INK); g.pixel(sx + 1, sy - 11, ui.INK)
       end
     end
   end
+  if behind then draw_thief() end
 
-  for _, d in ipairs(self.debris) do
-    g.fill_rect(math.floor(d.x * TILE) - cx, math.floor(d.y * TILE) - cy, 2, 2, d.colour)
-  end
+  -- The janitor, and the flashlight in hand.
+  sprites.draw("janitor", face, walk or 0, jx, jy)
+  if face ~= "up" then sprites.torch(jx + hx, jy + hy, fx, fy) end
 
-  -- The janitor: overalls, a cap, and the torch in front.
-  local sx, sy = math.floor(px * TILE) - cx, math.floor(py * TILE) - cy
-  g.fill_rect(sx - 4, sy - 4, 9, 9, ui.INK)
-  g.fill_rect(sx - 3, sy - 3, 7, 7, ui.DIM)
-  g.fill_rect(sx - 1, sy - 1, 3, 3, ui.INK)
-  local hx, hy = sx + math.floor(fx * 7 + 0.5), sy + math.floor(fy * 7 + 0.5)
-  g.fill_rect(hx - 1, hy - 1, 3, 3, ui.ACCENT)
-  return light
+  if th and not th.gone and not behind then draw_thief() end
+  return L, cx, cy
+end
+
+--- Is the thief in the light `L` (as Room:draw returned it)?
+function Room:thief_lit(L, cx, cy)
+  local th = self.thief
+  if not th or th.gone or th.caught or not L then return false end
+  return light.lit(L, th.x * TILE - cx, th.y * TILE - cy - 6)
 end
 
 return world

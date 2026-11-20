@@ -38,8 +38,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
-import { pixelize, validateSprite, encode } from './lib/pixel.mjs';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { registerHooks } from 'node:module';
+import { pixelize, pixelizeArt, validateSprite, encode } from './lib/pixel.mjs';
+import { glbEmpties } from './lib/glb.mjs';
+
+// MOSA's frontend modules import each other the way its bundler likes
+// (`./shows`, a bare `.json`). Node strips the types; these hooks fill in the
+// rest, so the catalogue of hung works is read from MOSA's own source.
+registerHooks({
+  resolve(spec, ctx, next) {
+    if (/^\.\.?\//.test(spec) && !/\.[a-z]+$/i.test(spec)) {
+      for (const ext of ['.ts', '.tsx', '.mjs', '.js']) { try { return next(spec + ext, ctx); } catch { /* next */ } }
+    }
+    return next(spec, ctx);
+  },
+  load(url, ctx, next) {
+    if (url.endsWith('.json') && url.includes('/apps/frontend/')) {
+      return { format: 'module', shortCircuit: true, source: `export default ${fs.readFileSync(fileURLToPath(url), 'utf8')};` };
+    }
+    return next(url, ctx);
+  },
+});
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
 const args = process.argv.slice(2);
@@ -57,7 +77,7 @@ const THUMB_CACHE = path.join(ROOT, '.cache', 'thumbs');
 const PIXEL_DIR = path.join(ROOT, 'art', 'pixel');
 
 /** Bump when the shape of mosa_data.lua changes; the app refuses a mismatch. */
-export const DATA_SCHEMA = 1;
+export const DATA_SCHEMA = 2;
 
 // Badge map tuning. A tile is drawn TILE_PX square on the 320x240 screen.
 const MAX_TILES = 44;      // longest room axis, in tiles (before the corridor rule)
@@ -88,7 +108,9 @@ function mosaFile(rel) {
 function mosaCommit() {
   const git = (...a) => execFileSync('git', ['-C', MOSA, ...a], { encoding: 'utf8' }).trim();
   const commit = git('rev-parse', 'HEAD');
-  const dirty = git('status', '--porcelain', '--', 'apps/frontend/src/lib/rooms.generated.ts', 'apps/frontend/src/lib/linkPaths.ts') !== '';
+  const dirty = git('status', '--porcelain', '--', 'apps/frontend/src/lib/rooms.generated.ts', 'apps/frontend/src/lib/linkPaths.ts',
+    'apps/frontend/src/lib/communityArt.ts', 'apps/frontend/src/lib/shows', 'apps/frontend/src/lib/sirialPins.generated.ts',
+    'apps/frontend/src/lib/sirials.provenance.generated.ts', 'apps/frontend/public/models', 'apps/frontend/public/collections') !== '';
   let describe = '';
   try { describe = git('describe', '--tags', '--always'); } catch { describe = commit.slice(0, 7); }
   return { commit, describe, dirty };
@@ -104,7 +126,7 @@ function footprint(center, half, rotationY = 0) {
   return { x0: center[0] - hx, x1: center[0] + hx, z0: center[2] - hz, z1: center[2] + hz };
 }
 
-function roomPlan(room, allPortals) {
+function roomPlan(room, allPortals, extras = {}) {
   const boxes = room.claims.map((c) => footprint(c.center, c.half, c.rotationY));
   const minX = Math.min(...boxes.map((b) => b.x0)), maxX = Math.max(...boxes.map((b) => b.x1));
   const minZ = Math.min(...boxes.map((b) => b.z0)), maxZ = Math.max(...boxes.map((b) => b.z1));
@@ -179,7 +201,82 @@ function roomPlan(room, allPortals) {
   for (const v of room.vendors) place('vending', v.id, v.center, null, 0);
   for (const e of room.entrances) place('entrance', e.slug, e.center, null, 0);
 
-  return { m, ox, oz, w, h, rects, doors, marks, floorTiles: floor.size };
+  // Bottles lie where the HD museum's own find spots are.
+  const spots = [];
+  for (const s of extras.spots ?? []) {
+    const at = nearestFloor(s.x, s.z, occupied);
+    if (at && !spots.some(([x, y]) => x === at[0] && y === at[1])) spots.push(at);
+  }
+
+  // Works hang on the badge wall nearest their empty. The claim volumes are
+  // generous, so the HD museum's walls sit a little inside them: a work snaps
+  // to the closest floor tile on an edge (within WALL_REACH tiles) and hangs on
+  // the wall beside it, `s` = n/e/s/w. Further out, the empty is on a partition
+  // the volumes don't model; the work hangs on a free-standing panel (no `s`).
+  const WALL_REACH = 3;
+  const art = [];
+  const SIDES = [['n', 0, -1], ['e', 1, 0], ['s', 0, 1], ['w', -1, 0]];
+  const edges = [...floor].map((k) => k.split(',').map(Number))
+    .filter(([i, j]) => SIDES.some(([, sx, sz]) => !floor.has(`${i + sx},${j + sz}`)));
+  for (const a of extras.hangs ?? []) {
+    const fx = (a.x - ox) / m - 0.5, fz = (a.z - oz) / m - 0.5;
+    let at = null, bestD = WALL_REACH * WALL_REACH;
+    for (const [i, j] of edges) {
+      if (occupied.has(`${i},${j}`)) continue;
+      const d = (i - fx) ** 2 + (j - fz) ** 2;
+      if (d < bestD) { bestD = d; at = [i, j]; }
+    }
+    let side;
+    if (at) {
+      const [i, j] = at;
+      let best = -Infinity;
+      for (const [name, sx, sz] of SIDES) {
+        if (floor.has(`${i + sx},${j + sz}`)) continue;
+        const along = (fx - i) * sx + (fz - j) * sz;
+        if (along > best) { best = along; side = name; }
+      }
+    } else {
+      at = nearestFloor(a.x, a.z, occupied);
+      if (!at) continue;
+    }
+    occupied.add(`${at[0]},${at[1]}`);
+    art.push({ key: a.key, x: at[0], y: at[1], s: side });
+  }
+
+  return { m, ox, oz, w, h, rects, doors, marks, spots, art, floorTiles: floor.size };
+}
+
+// ── the museum map ───────────────────────────────────────────────────────────
+
+const MAP_W = 300, MAP_H = 146;
+
+/**
+ * MOSA's rooms share one world, so their claim volumes make a real floorplan.
+ * Each room becomes rects in map pixels, plus `at` = { x, y, k } to place a
+ * tile of its badge plan on the map (map = at + tile * k).
+ */
+function museumMap(rooms, plans) {
+  const boxes = new Map(rooms.map((r) => [r.id, r.claims.map((c) => footprint(c.center, c.half, c.rotationY))]));
+  const all = [...boxes.values()].flat();
+  const minX = Math.min(...all.map((b) => b.x0)), maxX = Math.max(...all.map((b) => b.x1));
+  const minZ = Math.min(...all.map((b) => b.z0)), maxZ = Math.max(...all.map((b) => b.z1));
+  const k = Math.min((MAP_W - 2) / (maxX - minX), (MAP_H - 2) / (maxZ - minZ));
+  // Cropped to the plan's own height, so the badge can centre it.
+  const mapH = Math.ceil((maxZ - minZ) * k) + 2;
+  const offX = Math.floor((MAP_W - (maxX - minX) * k) / 2), offY = 1;
+  const px = (x) => offX + (x - minX) * k, py = (z) => offY + (z - minZ) * k;
+  const out = {};
+  for (const r of rooms) {
+    const plan = plans.get(r.id);
+    out[r.id] = {
+      rects: boxes.get(r.id).map((b) => {
+        const x = Math.round(px(b.x0)), y = Math.round(py(b.z0));
+        return [x, y, Math.max(2, Math.round(px(b.x1)) - x), Math.max(2, Math.round(py(b.z1)) - y)];
+      }),
+      at: { x: Math.round(px(plan.ox) * 10) / 10, y: Math.round(py(plan.oz) * 10) / 10, k: Math.round(plan.m * k * 1000) / 1000 },
+    };
+  }
+  return { w: MAP_W, h: mapH, rooms: out };
 }
 
 // ── sprites ──────────────────────────────────────────────────────────────────
@@ -245,7 +342,11 @@ async function getJson(p) {
 
 async function main() {
   const lock = fs.existsSync(LOCK_PATH) ? JSON.parse(fs.readFileSync(LOCK_PATH, 'utf8')) : {};
-  const registry = { rooms: [...(lock.registry?.rooms ?? [])], pieces: [...(lock.registry?.pieces ?? [])] };
+  const registry = {
+    rooms: [...(lock.registry?.rooms ?? [])],
+    pieces: [...(lock.registry?.pieces ?? [])],
+    works: [...(lock.registry?.works ?? [])],
+  };
 
   const source = mosaCommit();
   if (source.dirty) log('warning: MOSA checkout has uncommitted changes to the synced files');
@@ -253,6 +354,10 @@ async function main() {
   const linksTs = mosaFile('apps/frontend/src/lib/linkPaths.ts');
   const { GENERATED_ROOMS } = await import(pathToFileURL(roomsTs).href);
   const { parseLinkPath, findLinkPath } = await import(pathToFileURL(linksTs).href);
+  const { HUNG_WORKS } = await import(pathToFileURL(mosaFile('apps/frontend/src/lib/communityArt.ts')).href);
+  const { SIRIAL_PINS } = await import(pathToFileURL(mosaFile('apps/frontend/src/lib/sirialPins.generated.ts')).href);
+  const { SIRIALS_PROVENANCE } = await import(pathToFileURL(mosaFile('apps/frontend/src/lib/sirials.provenance.generated.ts')).href);
+  const PUBLIC = path.join(MOSA, 'apps/frontend/public');
 
   /** Every URL the badge prints goes through MOSA's own link parser. */
   const linkUrl = (p) => {
@@ -289,7 +394,7 @@ async function main() {
 
   // Room programmes (MOSA's quests). The badge can award the goal types it can
   // observe; any other type is reported and skipped, never approximated.
-  const BADGE_GOALS = new Set(['visit', 'pop-all-balloons', 'discover-room']);
+  const BADGE_GOALS = new Set(['visit', 'discover-room']);
   const programme = (id) => {
     const file = path.join(MOSA, 'apps/frontend/public/rooms', `${id}.programme.json`);
     if (!fs.existsSync(file)) return [];
@@ -299,6 +404,9 @@ async function main() {
       id: g.id, type: g.type, name: ascii(g.name), text: ascii(g.description), room: g.room,
     }));
   };
+  const programmes = Object.fromEntries(GENERATED_ROOMS.map((r) => [r.id, programme(r.id)]));
+  // A room another room's goal asks you to discover is off the map until you do.
+  const hidden = new Set(Object.values(programmes).flat().filter((g) => g.type === 'discover-room').map((g) => g.room));
 
   // A partner entrance in the room can be scanned straight to its own /at/ link.
   const entranceLinks = {};
@@ -306,10 +414,50 @@ async function main() {
     if (l.enabled && l.kind === 'entrance' && !l.opensAt) entranceLinks[l.ref] = { url: linkUrl(`/at/${l.slug}`), label: ascii(l.label || l.hostName || l.slug) };
   }
 
+  // The hung works: MOSA's curated walls (the Community Gallery and its shows,
+  // HUNG_WORKS) and every Sirial pinned to a named spot. The HD museum's random
+  // Sirial walls change per visit, so they stay off the badge.
+  const hung = [];
+  for (const w of HUNG_WORKS) {
+    hung.push({
+      key: `work/${w.id ?? w.placement}`, room: w.room, placement: w.placement,
+      title: w.title, artist: w.artist ?? '', collection: w.collection ?? '', aspect: w.aspect, link: w.link,
+      // A moving-image work's still: MOSA's own rule (videoBudget.posterUrlFor).
+      image: w.url.replace(/\.mp4$/i, '.poster.webp'),
+    });
+  }
+  for (const p of SIRIAL_PINS) {
+    const prov = SIRIALS_PROVENANCE[`CARD_${p.card}`];
+    const trait = (label) => prov?.traits?.find((t) => t.label === label)?.value;
+    hung.push({
+      key: `sirial/${p.card}`, room: p.room, placement: p.name,
+      title: prov?.item ? `${prov.title}: ${prov.item}` : (prov?.title ?? `Sirial #${p.card}`),
+      artist: trait('Artist') ?? 'Sirius Crocodile', collection: prov?.collection ?? 'Sirials', aspect: 1,
+      image: `/collections/sirials/CARD_${p.card}--square.webp`,
+    });
+  }
+  const wanted = new Set(hung.map((w) => w.placement));
+  const empties = {};
+  for (const r of GENERATED_ROOMS) {
+    const file = path.join(PUBLIC, 'models', `${r.id}.glb`);
+    empties[r.id] = fs.existsSync(file) ? glbEmpties(file, (n) => n.startsWith('find_placement__') || wanted.has(n)) : [];
+  }
+
+  const plans = new Map();
   const rooms = GENERATED_ROOMS.map((r) => {
-    const plan = roomPlan(r, allPortals);
+    const named = new Map(empties[r.id].map((e) => [e.name, e]));
+    const hangs = [];
+    for (const w of hung.filter((h) => h.room === r.id)) {
+      const e = named.get(w.placement);
+      if (e) hangs.push({ key: w.key, x: e.x, z: e.z });
+      else log(`${r.id}: no empty ${w.placement} for ${w.key}; not hung`);
+    }
+    const spots = empties[r.id].filter((e) => e.name.startsWith('find_placement__'));
+    const plan = roomPlan(r, allPortals, { hangs, spots });
+    plans.set(r.id, plan);
     for (const mk of plan.marks) if (mk.kind === 'entrance' && entranceLinks[mk.name]) Object.assign(mk, entranceLinks[mk.name]);
     const area = plan.floorTiles;
+    for (const a of plan.art) if (!registry.works.includes(a.key)) registry.works.push(a.key);
     return {
       id: r.id,
       idx: registry.rooms.indexOf(r.id),
@@ -323,13 +471,36 @@ async function main() {
       // Night-shift litter: the catalogue's own hunt/wild counts, so the busiest
       // rooms in the museum are the messiest on the badge. Scaled for a smaller map.
       bottles: Math.max(1, Math.min(8, Math.round((huntByRoom[r.id] ?? 0) * 0.6) || (area > 60 ? 1 : 0))),
-      balloons: Math.max(1, Math.min(10, Math.round(area / 45))),
+      spots: plan.spots,
+      art: plan.art.map((a) => ({ w: registry.works.indexOf(a.key), x: a.x, y: a.y, s: a.s })),
+      hidden: hidden.has(r.id) || undefined,
       link: roomLinks[r.id],
-      goals: programme(r.id),
+      goals: programmes[r.id],
     };
   });
   // Fixed rooms order: the registry's (stable) order.
   rooms.sort((a, b) => a.idx - b.idx);
+  const map = museumMap(GENERATED_ROOMS, plans);
+  for (const r of rooms) Object.assign(r, { plan: map.rooms[r.id].rects, at: map.rooms[r.id].at });
+
+  // Works: a pixel miniature of each hung piece and a link to the real one, in
+  // full resolution: the work's own page where MOSA's plaque has one, else the
+  // room's curated link, else the museum.
+  const works = [];
+  for (const w of hung) {
+    const idx = registry.works.indexOf(w.key);
+    if (idx < 0) continue; // not hung on the badge (no empty)
+    const file = path.join(PUBLIC, w.image);
+    if (!fs.existsSync(file)) { log(`${w.key}: missing image ${w.image}; skipped`); continue; }
+    const sp = await pixelizeArt(fs.readFileSync(file), { aspect: w.aspect });
+    let url = roomLinks[w.room] ?? linkUrl('/at/defcon');
+    if (/^https:\/\/\S+$/.test(w.link ?? '') && w.link.length <= 200) url = w.link;
+    works.push({
+      idx, room: w.room, title: ascii(w.title), artist: ascii(w.artist), set: ascii(w.collection) || undefined,
+      url, via: new URL(url).hostname.replace(/^www\./, ''), sw: sp.w, sh: sp.h, ...encode(sp),
+    });
+  }
+  works.sort((a, b) => a.idx - b.idx);
 
   // Pieces: every catalogue variation, with a thumbnail and its canonical link.
   const pieces = [];
@@ -381,9 +552,11 @@ async function main() {
     home: linkUrl('/at/defcon'),
     start: startRoom,
     thumb: { w: THUMB_W, h: THUMB_H },
+    map: { w: map.w, h: map.h },
     rooms,
     collections,
     pieces,
+    works,
   };
   const header = [
     '-- GENERATED by tools/sync-mosa.mjs from the MOSA repo and api.mosa.center. Do not edit.',
@@ -400,7 +573,7 @@ async function main() {
     api: { url: API, catalog: catalogHash, links: linksHash },
     rooms: roomsHash,
     data: sha(text),
-    pixel: { hand: hand.sort(), auto: pieces.length - hand.length },
+    pixel: { hand: hand.sort(), auto: pieces.length - hand.length, works: works.length },
     registry,
   };
 
@@ -419,7 +592,7 @@ async function main() {
   fs.writeFileSync(DATA_PATH, text);
   fs.writeFileSync(LOCK_PATH, JSON.stringify(nextLock, null, 2) + '\n');
   log(`pixel art: ${hand.length} of ${pieces.length} bottles hand-made (art/pixel/), the rest pixelized from their covers`);
-  log(`wrote ${path.relative(ROOT, DATA_PATH)} (${(text.length / 1024).toFixed(1)} KB): ${rooms.length} rooms, ${pieces.length} pieces, MOSA ${source.describe}`);
+  log(`wrote ${path.relative(ROOT, DATA_PATH)} (${(text.length / 1024).toFixed(1)} KB): ${rooms.length} rooms, ${pieces.length} pieces, ${works.length} works, MOSA ${source.describe}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

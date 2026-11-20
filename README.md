@@ -5,18 +5,24 @@ A way into [M.O.S.A., the Museum of Sirius Art](https://mosa.center), for the
 Solana OS (ESP32-C5, a 320×240 screen, six buttons, eight RGB LEDs, a
 badge-to-badge mesh).
 
-**Night Shift** is MOSA after hours, top-down. You're the janitor. The rooms
-are MOSA's real floorplans, the bottles in the dark are real pieces from the
-live **MOSA Bottles** collection by real artists, and every one you find shows
-a QR that takes you to where it stands in the HD museum, to collect it on
-Solana. Leave the badge alone and it becomes a walking billboard for the
-museum.
+**Night Shift** is MOSA after hours, top-down. You're the janitor, it's two
+minutes to midnight, and three works have gone missing from their walls. Take
+the flashlight off its hook and do your rounds: the rooms are MOSA's real
+floorplans, and the art on the walls is the art MOSA hangs (Community Gallery,
+the Poet Toads show, the Sirials), hung where the HD museum hangs it, as pixel
+miniatures. Hold your light on a thief and they drop what they took. Look at
+any work up close and a QR takes you to the real one, in full resolution.
+The bottles in the dark are real pieces from the live **MOSA Bottles**
+collection, lying on the museum's own find spots, each a QR away from being
+collected on Solana. Leave the badge alone and it becomes a walking billboard
+for the museum.
 
 | | | |
 | --- | --- | --- |
-| ![Splash](docs/screens/00-splash.png) | ![Title](docs/screens/01-title.png) | ![Found](docs/screens/07-found-card.png) |
-| ![Lobby](docs/screens/04-lobby-walk.png) | ![Clipboard](docs/screens/12-pause.png) | ![Stamp](docs/screens/16-wave-received.png) |
-| ![Museum link](docs/screens/08-museum-link-qr.png) | ![Lanyard](docs/screens/02-lanyard.png) | ![Shift record](docs/screens/14-shift-record.png) |
+| ![Title](docs/screens/01-title.png) | ![The cupboard](docs/screens/02-intro-cupboard.png) | ![The briefing](docs/screens/04-briefing.png) |
+| ![Art on the wall](docs/screens/06-art-on-the-wall.png) | ![A work up close](docs/screens/07-art-card.png) | ![See it in HD](docs/screens/08-see-it-in-hd.png) |
+| ![A thief in the light](docs/screens/10-thief-in-the-light.png) | ![Recovered](docs/screens/11-recovered.png) | ![Museum map](docs/screens/15-museum-map.png) |
+| ![The art](docs/screens/16-the-art.png) | ![All clear](docs/screens/19-all-clear.png) | ![Lanyard](docs/screens/21-lanyard.png) |
 
 *Screenshots come from the headless Solana OS in `tools/lib/host.mjs`
 (`pnpm preview`). The firmware draws QR codes itself, so they show as
@@ -54,7 +60,7 @@ the eight LEDs:
 The page can also simulate a janitor nearby (mesh presence, which lets the
 mythical bottle appear), send a wave, relaunch, or clear the record. Run
 `pnpm build` in another terminal and the app relaunches with the new build.
-Your shift record survives that, and is kept in `.cache/play-storage.lua`.
+Your record survives that, and is kept in `.cache/play-storage.lua`.
 
 Three ways to look at the app without hardware, from fastest to most real:
 
@@ -72,11 +78,13 @@ None of them predict the ESP32-C5's speed. Test on a real badge before an event.
 | | |
 | --- | --- |
 | D-pad | Walk; move through menus |
-| SELECT | Pop a balloon in reach; read a plaque; choose |
-| CANCEL | Clipboard (pause): visitor map, shift record, wave, clock out. On the title: leave the app |
+| SELECT | Look at a work up close; read a plaque or an empty frame's label; choose |
+| CANCEL | Clipboard (pause): museum map, the art, bottles, wave, clock out. On the title: leave the app |
 
-Walk into a bottle to pick it up. The LEDs blink in the colour of the
-nearest bottle, faster as you get closer.
+The flashlight points where you walk. Hold it on a thief for a moment and
+they drop the work they took. Walk into a bottle to pick it up. The LEDs
+sweep as you near a thief, and otherwise blink in the colour of the nearest
+bottle, faster as you get closer.
 
 ## Develop
 

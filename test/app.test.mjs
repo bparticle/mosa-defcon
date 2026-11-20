@@ -11,9 +11,26 @@ import { SolanaOS } from '../tools/lib/host.mjs';
 const lock = JSON.parse(fs.readFileSync(new URL('../mosa.lock.json', import.meta.url), 'utf8'));
 const data = fs.readFileSync(new URL('../src/data/mosa_data.lua', import.meta.url), 'utf8');
 const HOME = data.match(/home="([^"]+)"/)[1];
+const START = data.match(/start="([^"]+)"/)[1];
 const state = (b) => String(b.lua('return mosa_debug.state()'));
 const ROOMS = lock.registry.rooms;
 const BUDGET = 200000;
+
+// CLOCK IN, past the intro and the curator's note, into the first room.
+async function clockIn(b) {
+  await b.press('a'); await b.frames(2); // CLOCK IN: the intro
+  await b.press('a'); await b.frames(2); // skip it: tonight's rounds
+  assert.match(state(b), /scene=briefing/);
+  await b.press('a'); await b.frames(10); // start the shift
+  assert.match(state(b), /scene=game/);
+}
+
+/** The doors of a room in the data module, as room ids. */
+function doorsOf(id) {
+  const at = data.indexOf(`id="${id}"`);
+  const block = data.slice(at, data.indexOf('marks=', at));
+  return [...block.matchAll(/to="(room\d+)"/g)].map((m) => m[1]);
+}
 
 test('boots to the title with no errors, inside the instruction budget', async () => {
   const b = await bootApp();
@@ -36,9 +53,20 @@ test('opens on the splash, which skips on a button or hands over to the title by
   assert.deepEqual([...b.errors, ...c.errors], []);
 });
 
+test('the shift starts in a cupboard, with a flashlight and a curator\'s note', async () => {
+  const b = await bootApp();
+  await b.press('a'); await b.frames(2);
+  assert.match(state(b), /scene=intro/);
+  await b.frames(220); // the whole intro plays out by itself
+  assert.match(state(b), /scene=briefing/);
+  await b.press('b');
+  assert.match(state(b), /scene=title/, 'CANCEL on the note goes back to the front door');
+  assert.deepEqual(b.errors, []);
+});
+
 test('CANCEL on the title leaves the app; anywhere else it steps back', async () => {
   const b = await bootApp();
-  await b.press('a'); await b.frames(10); // clock in
+  await clockIn(b);
   assert.equal(await b.press('b'), true, 'CANCEL in the museum is handled (opens the clipboard)');
   assert.match(state(b), /scene=pause/);
   await b.press('b'); await b.press('b'); // back to work, then the clipboard again
@@ -49,10 +77,10 @@ test('CANCEL on the title leaves the app; anywhere else it steps back', async ()
 
 test('every room can be entered, walked and drawn, within the budgets', async () => {
   const b = await bootApp();
-  await b.press('a'); await b.frames(4);
+  await clockIn(b);
   let peak = 0;
   for (const id of ROOMS) {
-    while (/scene=card/.test(state(b))) await b.press('b'); // a bottle walked into
+    while (/scene=(card|artcard)/.test(state(b))) await b.press('b'); // a bottle walked into, a thief caught
     // Walk in the way a visitor does: the room is laid out across ticks.
     b.lua(`mosa_debug.game():travel("${id}", nil)`);
     for (let i = 0; i < 30 && !state(b).includes(`room=${id} `); i++) {
@@ -60,16 +88,19 @@ test('every room can be entered, walked and drawn, within the budgets', async ()
       peak = Math.max(peak, b.lastInstructions());
     }
     assert.match(state(b), new RegExp(`room=${id} `), `${id} laid out within 30 ticks`);
-    await b.hold('down', 6); await b.hold('left', 6);
-    peak = Math.max(peak, b.lastInstructions());
+    for (const dir of ['up', 'right', 'down', 'left']) {
+      await b.hold(dir, 6);
+      peak = Math.max(peak, b.lastInstructions());
+    }
     assert.deepEqual(b.errors, [], `in ${id}`);
     b.lua(`mosa_debug.travel("${id}")`); // back in the room, past any card a bottle opened
   }
   // Solana OS stops a callback past 200 000 instructions; keep a wide margin.
   assert.ok(peak < BUDGET / 2, `peak tick ${peak} instructions`);
-  await b.press('b'); await b.press('down'); await b.press('down'); await b.press('a'); // record screen
-  await b.frames(6);
-  assert.match(state(b), /scene=record/);
+  while (/scene=(card|artcard)/.test(state(b))) await b.press('b');
+  await b.press('b'); await b.press('down'); await b.press('down'); await b.press('a'); // the art
+  await b.frames(10);
+  assert.match(state(b), /scene=art/);
   const kb = Number(b.lua('return __gc()'));
   // The badge gives an app 6 MB; Night Shift keeps to well under 1 MB (64-bit
   // Lua here roughly doubles table cost vs the badge's 32-bit build, and the
@@ -78,9 +109,74 @@ test('every room can be entered, walked and drawn, within the budgets', async ()
   assert.deepEqual(b.errors, []);
 });
 
+test('tonight there are thieves, the first of them one door from the start', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  const heist = String(b.lua('return mosa_debug.heist()')).split(',');
+  assert.equal(heist.length, 3);
+  assert.equal(new Set(heist).size, 3, 'three different rooms');
+  assert.ok(doorsOf(START).includes(heist[0]), `${heist[0]} is one door from ${START}`);
+});
+
+test('a thief held in the beam drops the work, and catching them all clears the night', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  const heist = String(b.lua('return mosa_debug.heist()')).split(',');
+  let peak = 0;
+  for (const [n, id] of heist.entries()) {
+    b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
+    // The empty frame tells you what was taken.
+    assert.equal(b.lua('return mosa_debug.near("missing")'), true, `an empty frame in ${id}`);
+    await b.frames(2); await b.press('a');
+    assert.match(state(b), /scene=plaque/);
+    await b.press('b');
+    assert.equal(b.lua('return mosa_debug.face_thief()'), true, `a thief in ${id}`);
+    for (let i = 0; i < 60 && !/scene=artcard/.test(state(b)); i++) { await b.frames(1); peak = Math.max(peak, b.lastInstructions()); }
+    assert.match(state(b), new RegExp(`scene=artcard .*left=${2 - n} `), `caught in ${id}`);
+    await b.press('a'); await b.frames(2); // see it in HD
+    assert.match(b.qr()?.text ?? '', /^https:\/\//);
+    await b.press('b'); await b.frames(2);
+  }
+  assert.match(state(b), /scene=finale/, 'the lights come up');
+  await b.frames(100);
+  await b.press('a'); await b.frames(2);
+  assert.ok(b.qr()?.text.startsWith(`${HOME}?shift=`), 'the night ends one scan from the museum');
+  assert.ok(peak < BUDGET / 2, `peak tick ${peak}`);
+  assert.deepEqual(b.errors, []);
+});
+
+test('a work on its wall opens up close, joins the record, and links to the real one', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  const room = ROOMS.find((id) => {
+    const at = data.indexOf(`id="${id}"`);
+    return /art=\{\s*\{w=/.test(data.slice(at, data.indexOf('goals=', at)));
+  });
+  b.lua(`mosa_debug.travel("${room}")`); await b.frames(2);
+  assert.equal(b.lua('return mosa_debug.near("art")'), true);
+  await b.frames(2);
+  await b.press('a'); await b.frames(2);
+  assert.match(state(b), /scene=artcard .*seen=1 /);
+  await b.press('a'); await b.frames(2);
+  const link = b.qr();
+  assert.ok(link && /^https:\/\//.test(link.text) && link.text.length <= 256, JSON.stringify(link));
+  const again = await bootApp({ storage: b.storageDump() });
+  assert.match(state(again), /seen=1 /, 'kept across relaunches');
+  assert.deepEqual(b.errors, []);
+});
+
+test('the museum map opens from the clipboard', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  await b.press('b'); await b.press('down'); await b.press('a'); await b.frames(20);
+  assert.match(state(b), /scene=map/);
+  for (let i = 0; i < 14; i++) await b.press('right');
+  assert.deepEqual(b.errors, []);
+});
+
 test('a found bottle is kept across relaunches and shows up in the shift report', async () => {
   const b = await bootApp();
-  await b.press('a'); await b.frames(10);
+  await clockIn(b);
   const title = String(b.lua('return mosa_debug.to_bottle()'));
   await b.frames(3);
   assert.match(state(b), /scene=card .*found=1/);
@@ -92,24 +188,28 @@ test('a found bottle is kept across relaunches and shows up in the shift report'
   // Decode the report the app would show, the way MOSA does.
   const shift = String(b.lua('return mosa_debug.report()'));
   const decoded = decodeShift(shift, lock.registry);
-  assert.deepEqual(decoded.rooms, ['room0']);
+  assert.deepEqual(decoded.rooms, [START]);
   assert.equal(decoded.pieces.length, 1);
 });
 
 test('the museum link and the shift report are QR codes Solana OS draws', async () => {
   const b = await bootApp();
-  await b.press('down'); await b.press('a'); await b.frames(2); // lanyard
+  for (let i = 0; i < 3; i++) await b.press('down');
+  await b.press('a'); await b.frames(2); // lanyard
   assert.equal(b.qr()?.text, HOME);
   await b.press('b');
   assert.equal(b.qr(), null, 'the code goes away with its screen');
-  await b.press('up'); await b.press('a'); await b.frames(10);
+  for (let i = 0; i < 3; i++) await b.press('up');
+  await clockIn(b);
   b.lua('mosa_debug.to_bottle()'); await b.frames(3);
   await b.press('a'); await b.frames(2); // the card's museum link
   const link = b.qr();
   assert.ok(link && link.text.startsWith('https://'), JSON.stringify(link));
   assert.ok(link.size >= 25 && link.size <= 218 && link.text.length <= 256);
   await b.press('b');
-  await b.press('b'); await b.press('down'); await b.press('down'); await b.press('a'); await b.frames(6); // record
+  await b.press('b'); for (let i = 0; i < 3; i++) await b.press('down');
+  await b.press('a'); await b.frames(10); // bottles
+  assert.match(state(b), /scene=bottles/);
   for (let i = 0; i < 4; i++) await b.press('down');
   await b.press('a'); await b.frames(2);
   const report = b.qr();
@@ -121,8 +221,8 @@ test('the museum link and the shift report are QR codes Solana OS draws', async 
 
 test('announces itself to other badges over the mesh and hears waves', async () => {
   const b = await bootApp();
-  await b.press('a'); await b.frames(100);
-  const presence = b.meshOut.filter((m) => m.to === '*' && m.msg.p === 'room0');
+  await clockIn(b); await b.frames(90);
+  const presence = b.meshOut.filter((m) => m.to === '*' && m.msg.p === START);
   assert.ok(presence.length > 0, JSON.stringify(b.meshOut.slice(0, 2)));
   assert.ok(presence.length <= 4, 'a presence every couple of seconds, well under the mesh rate');
   b.meshIn('7K2Q9M', { p: 'room4', f: 7 });
@@ -132,14 +232,14 @@ test('announces itself to other badges over the mesh and hears waves', async () 
   await b.frames(2);
   assert.deepEqual(b.errors, []);
   // Waving back, from the clipboard.
-  await b.press('b'); for (let i = 0; i < 3; i++) await b.press('down');
+  await b.press('b'); for (let i = 0; i < 4; i++) await b.press('down');
   await b.press('a');
   assert.ok(b.meshOut.some((m) => m.msg.w), 'sent a wave');
 });
 
 test('a lone janitor never meets a mythical', async () => {
   const b = await bootApp();
-  await b.press('a'); await b.frames(2);
+  await clockIn(b);
   for (const id of ROOMS) b.lua(`mosa_debug.travel("${id}")`);
   await b.frames(1);
   assert.equal(String(b.lua('return mosa_debug.tiers()')).includes('mythical'), false);
@@ -181,8 +281,23 @@ test('the data module agrees with the lock file', async () => {
           if #p.url > 256 then problems[#problems + 1] = "url too long for a QR code " .. p.url end
           if not p.rle then problems[#problems + 1] = "no thumbnail " .. p.id end
         end
+        local works = {}
+        for _, w in ipairs(D.works) do
+          works[w.idx] = w
+          if not w.url:match("^https://") or #w.url > 256 then problems[#problems + 1] = "bad work url " .. w.url end
+          if not w.rle or w.sw > 24 or w.sh > 24 then problems[#problems + 1] = "bad miniature " .. w.title end
+          if not ids[w.room] then problems[#problems + 1] = "work in unknown room " .. w.room end
+        end
+        for _, r in ipairs(D.rooms) do
+          if r.balloons then problems[#problems + 1] = r.id .. " still has balloons" end
+          for _, a in ipairs(r.art) do
+            if not works[a.w] then problems[#problems + 1] = r.id .. " hangs unknown work " .. a.w end
+            if a.x < 0 or a.y < 0 or a.x >= r.w or a.y >= r.h then problems[#problems + 1] = r.id .. " work off the plan" end
+          end
+          if #r.plan == 0 then problems[#problems + 1] = r.id .. " not on the map" end
+        end
         print("PROBLEMS " .. #problems .. " " .. table.concat(problems, "; "))
-        print("ROOMS " .. #D.rooms .. " PIECES " .. #D.pieces)`,
+        print("ROOMS " .. #D.rooms .. " PIECES " .. #D.pieces .. " WORKS " .. #D.works)`,
     },
   }).launch();
   assert.deepEqual(b.errors, []);
@@ -190,6 +305,7 @@ test('the data module agrees with the lock file', async () => {
   assert.match(line, /PROBLEMS 0 /, line);
   const counts = b.logs.find((l) => l.includes('ROOMS'));
   assert.match(counts, new RegExp(`ROOMS ${ROOMS.length} `));
+  assert.match(counts, new RegExp(`WORKS ${lock.registry.works.length}$`), 'every registered work is on the badge');
 });
 
 // The badge runs Lua 5.5, where a for loop's variables are read-only; the host

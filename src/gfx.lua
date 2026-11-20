@@ -46,6 +46,11 @@ function g.fill_rect(x, y, w, h, c)
   if w > 0 and h > 0 then canvas:rect(floor(x), floor(y), floor(w), floor(h), c) end
 end
 
+--- A run of h rows, from integer coordinates (the flashlight's hot path).
+function g.hline(x, y, w, c, h)
+  if w > 0 then canvas:rect(x, y, w, h or 1, c) end
+end
+
 --- An outline, one pixel wide.
 function g.rect(x, y, w, h, c)
   x, y, w, h = floor(x), floor(y), floor(w), floor(h)

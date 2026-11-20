@@ -177,6 +177,39 @@ export async function pixelize(buf, { colours = 7, upright = true } = {}) {
   return compact({ idx, centres });
 }
 
+// A hung work is a picture, not an object: no background to clear and nothing
+// to stand upright. It keeps its own shape inside an ART x ART box, so a square
+// Sirial is 24x24 and a portrait Community Gallery work is ~17x24.
+export const ART = 24;
+
+/** The work's size in sprite pixels: the longer side ART, the other by aspect. */
+export function artSize(aspect) {
+  const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+  return a >= 1
+    ? { w: ART, h: Math.max(8, Math.round(ART / a)) }
+    : { w: Math.max(8, Math.round(ART * a)), h: ART };
+}
+
+/** A painting → { idx, centres, w, h }: an area-averaged miniature in up to 15 colours. */
+export async function pixelizeArt(buf, { aspect, colours = MAX_COLOURS } = {}) {
+  const meta = await sharp(buf).metadata();
+  const { w, h } = artSize(aspect ?? (meta.width && meta.height ? meta.width / meta.height : 1));
+  // Down in two steps: an area average to 4x, then a sharp pick of the cell
+  // centre, so edges stay crisp but colours aren't sampled from noise.
+  const { data } = await sharp(buf).flatten({ background: '#000000' }).removeAlpha()
+    .resize(w * 4, h * 4, { fit: 'cover', kernel: 'lanczos3' })
+    .modulate({ saturation: 1.15 })
+    .resize(w, h, { kernel: 'mitchell' })
+    .raw().toBuffer({ resolveWithObject: true });
+  const cells = [];
+  for (let i = 0; i < w * h; i++) cells.push([data[i * 3], data[i * 3 + 1], data[i * 3 + 2]]);
+  const { centres, nearest } = quantize(cells, colours);
+  // Palette index 0 is "clear"; a picture has none, so every pixel is 1..n.
+  const idx = new Uint8Array(w * h);
+  cells.forEach((c, i) => { idx[i] = nearest(c) + 1; });
+  return { ...compact({ idx, centres }), w, h };
+}
+
 /** Lone pixels: a speck inside a flat area takes the area's colour; a speck in the air goes. */
 function despeckle(idx) {
   const src = idx.slice();
@@ -250,7 +283,8 @@ export function encode({ idx, centres }) {
 }
 
 /** Sprite → PNG (scale × nearest), for previews and starter files. */
-export async function toPng({ idx, centres }, scale = 1) {
+export async function toPng({ idx, centres, w: SW = W, h: SH = H }, scale = 1) {
+  const [W, H] = [SW, SH];
   const raw = Buffer.alloc(W * H * 4);
   idx.forEach((v, i) => {
     if (!v) return;

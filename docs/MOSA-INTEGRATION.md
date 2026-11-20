@@ -13,7 +13,11 @@ The badge never hand-copies museum content. `pnpm sync` derives everything:
 | Room floorplans | `apps/frontend/src/lib/rooms.generated.ts` → each room's `claims` (footprints), rasterised per room | Same source the museum's travel uses; a new room in `MOSA-ROOMS.blend` → `build:world` → `pnpm sync` → on the badge. No badge code change |
 | Doors | `portals` (both rooms' listings, deduped) and `warps` | A doorway is carried by both rooms (MOSA's `check:world` guarantees it) |
 | Landmarks | `vitrines`, `flapboards`, `postcardwalls`, `dispensers`, `vendors`, `entrances` | New furniture kinds need a plaque text in `src/main.lua` (`PLAQUES`); unknown kinds still show, with a generic plaque |
-| Room stamps | `apps/frontend/public/rooms/<id>.programme.json` goals | The badge awards `visit`, `pop-all-balloons`, `discover-room`. Other goal types are logged by the sync and skipped, never approximated |
+| Room stamps | `apps/frontend/public/rooms/<id>.programme.json` goals | The badge awards `visit` and `discover-room` (a room behind one stays off the museum map until found). Other goal types are logged by the sync and skipped, never approximated |
+| Museum map | The room claim volumes, which share one world space | Scaled to the map screen and cropped; each room's rects and centre |
+| Works | `apps/frontend/src/lib/communityArt.ts` `HUNG_WORKS`, `sirialPins.generated.ts` `SIRIAL_PINS`, titles from `sirials.provenance.generated.ts` | Title, artist, link; images pixelized to at most 24×24, 15 colours. A work's own https link is its QR, else its room's. `registry.works` is append-only like the others |
+| Where works hang | Each room's GLB: `<room>_placement_<slot>` and `sirial_placement_N` empties (`tools/lib/glb.mjs`) | Snapped to the nearest wall within 3 tiles, facing out; otherwise a free-standing panel |
+| Bottle spots | The room GLBs' `find_placement__bottle.NNN` empties | Bottles lie there first, then anywhere on the floor |
 | Bottles, tiers, artists | `GET /finds/catalog` (live API) | Rarity weights and hunt rooms come from the catalogue, so a re-tuned hunt re-tunes the badge on the next sync |
 | Sprites | `GET /finds/media/<c>/<p>/cover`, or hand art in `art/pixel/` | Pixelized to 16×24, 7 colours, unless a hand-made sprite exists ([PIXEL-ART.md](PIXEL-ART.md)); run-length encoded |
 | Partner and room links | `GET /links` | Only enabled, unscheduled links |

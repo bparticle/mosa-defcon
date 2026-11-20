@@ -4,7 +4,7 @@
 -- The museum's rules (apps/frontend/CLAUDE.md, "Design language") hold here:
 -- near-black or off-white surfaces, typography-led, wide-tracked uppercase
 -- labels, and NO colour in the chrome. All chromatic energy comes from the
--- archive itself (the bottle thumbnails, the balloons). The single non-neutral
+-- archive itself (the works and the bottles). The single non-neutral
 -- accent is the museum's crosshair green, #7ee8a8.
 local g = require("gfx")
 local ui = {}
@@ -145,6 +145,7 @@ local GLYPH = {
   O = "11111111111101111011110111111111111",
   S = "11111111111100011111000111111111111",
   A = "11111111111101111111111111101111011",
+  L = "11000110001100011000110001111111111",
   ["."] = "00000000001111",
 }
 
@@ -185,24 +186,28 @@ end
 --- A catalogue number: NO. 007.
 function ui.no(n) return string.format("NO. %03d", n) end
 
--- Thumbnails: 16x24 palette art from the sync. piece.rle is run-length pairs
--- (count in the base64 alphabet, palette index in hex, 0 = transparent), so a
--- draw is one rect per run and nothing is cached but the 15-colour palette
--- (RGB565 in the data, turned into the canvas's 0xRRGGBB once).
+-- Thumbnails: palette art from the sync, 16x24 for a bottle and up to 24x24
+-- for a hung work (piece.sw x piece.sh). piece.rle is run-length pairs (count
+-- in the base64 alphabet, palette index in hex, 0 = clear), so a draw is one
+-- rect per run and nothing is cached but the 15-colour palette (RGB565 in the
+-- data, turned into the canvas's 0xRRGGBB once).
 local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local COUNT, HEX = {}, {}
 for i = 1, 64 do COUNT[B64:byte(i)] = i end
 for i = 0, 15 do HEX[(string.format("%x", i)):byte()] = i end
 local palettes = {}
 local function palette(piece)
-  local pal = palettes[piece.idx]
+  local pal = palettes[piece]
   if not pal then
     pal = {}
     for i = 1, #piece.pal // 4 do pal[i] = g.from565(tonumber(piece.pal:sub(i * 4 - 3, i * 4), 16)) end
-    palettes[piece.idx] = pal
+    palettes[piece] = pal
   end
   return pal
 end
+setmetatable(palettes, { __mode = "k" })
+
+function ui.size(piece) return piece.sw or 16, piece.sh or 24 end
 
 --- Draw a piece's thumbnail. `cast` (a colour) draws its silhouette instead:
 --- MOSA shows an unfound legendary as a plaster cast of its own shape.
@@ -210,6 +215,7 @@ function ui.thumb(piece, x, y, scale, cast)
   local s = piece.rle
   if not s then return end
   scale = scale or 1
+  local W = piece.sw or 16
   local pal = palette(piece)
   local pos = 0
   for i = 1, #s - 1, 2 do
@@ -218,14 +224,48 @@ function ui.thumb(piece, x, y, scale, cast)
       local col = cast or pal[c]
       local p, left = pos, n
       while left > 0 do
-        local px = p % 16
-        local len = math.min(left, 16 - px)
-        g.fill_rect(x + px * scale, y + (p // 16) * scale, len * scale, scale, col)
+        local px = p % W
+        local len = math.min(left, W - px)
+        g.fill_rect(x + px * scale, y + (p // W) * scale, len * scale, scale, col)
         p, left = p + len, left - len
       end
     end
     pos = pos + n
   end
+end
+
+--- n x n colours sampled from a piece's sprite (cell centres), for the tiny
+--- framed works on the museum's walls. Clear pixels come back as `bg`.
+function ui.sample(piece, n, bg)
+  local W, H = ui.size(piece)
+  local want, out = {}, {}
+  for j = 0, n - 1 do
+    for i = 0, n - 1 do
+      want[((j * H) // n + H // (2 * n)) * W + (i * W) // n + W // (2 * n)] = j * n + i + 1
+    end
+  end
+  local pal, s, pos = palette(piece), piece.rle, 0
+  for i = 1, #s - 1, 2 do
+    local cnt, c = COUNT[s:byte(i)], HEX[s:byte(i + 1)]
+    for p = pos, pos + cnt - 1 do
+      local k = want[p]
+      if k then out[k] = c > 0 and pal[c] or (bg or ui.BG) end
+    end
+    pos = pos + cnt
+  end
+  for k = 1, n * n do out[k] = out[k] or (bg or ui.BG) end
+  return out
+end
+
+--- A piece on show: a dark mat of size w x h with the piece centred at the
+--- largest whole scale that fits (and a pale frame round a work).
+function ui.mat(piece, x, y, w, h, cast)
+  g.fill_rect(x, y, w, h, g.color(24, 24, 24))
+  local pw, ph = ui.size(piece)
+  local k = math.max(1, math.min((w - 8) // pw, (h - 8) // ph))
+  local ox, oy = x + (w - pw * k) // 2, y + (h - ph * k) // 2
+  if piece.sw and not cast then g.rect(ox - 2, oy - 2, pw * k + 4, ph * k + 4, ui.PAPER) end
+  ui.thumb(piece, ox, oy, k, cast)
 end
 
 ui.TIER = { common = "COMMON", rare = "RARE", legendary = "LEGENDARY", mythical = "MYTHICAL" }

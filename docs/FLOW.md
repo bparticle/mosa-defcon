@@ -15,17 +15,23 @@ flowchart TD
   subgraph Play["2 · Play: on the badge"]
     APP --> TITLE[Title]
     TITLE -->|idle 30 s| LANY[Lanyard mode<br/>walking billboard]
-    TITLE --> WALK[Night Shift<br/>real MOSA floorplans]
+    TITLE --> INTRO[The cupboard<br/>the janitor takes the flashlight]
+    INTRO --> BRIEF[Tonight's rounds<br/>three works missing]
+    BRIEF --> WALK[Night Shift<br/>real MOSA floorplans]
+    WALK --> ART[Look at a work<br/>pixel miniature, label]
+    WALK --> THIEF[Catch a thief<br/>hold the light on them]
     WALK --> FIND[Find a bottle<br/>museum label card]
-    WALK --> POP[Pop balloons<br/>SELECT]
     WALK --> STAMP[Room stamps<br/>MOSA's own goals]
     WALK <-->|mesh| PEERS[Other janitors nearby<br/>wave · mythical unlock]
-    FIND --> REC[Shift record]
+    THIEF --> CLEAR[All clear<br/>the night's tally]
+    FIND --> REC[Bottles · shift report]
     STAMP --> REC
   end
 
   subgraph Handoff["3 · Hand-off: badge to phone"]
     FIND -->|QR| PIECE["mosa.center/at/find/&lt;c&gt;/&lt;p&gt;"]
+    ART -->|QR| WORK[The work's own page<br/>or its room]
+    CLEAR -->|QR| REPORT
     REC -->|QR| REPORT["mosa.center/at/defcon?shift=&lt;code&gt;"]
     LANY -->|QR| SITE["mosa.center/at/defcon"]
     PLAQUE[Plaques: vitrine, boards,<br/>partner entrances] -->|QR| ROOMLINK["/at/&lt;partner&gt; · /at/bp26"]
@@ -51,20 +57,32 @@ flowchart TD
 | **Word of mouth** | Mesh presence: badges with the app see each other. The mythical bottle only appears when two players are near. | Standing next to someone |
 
 The App Store installs **one app package**, so the whole app (code, floorplans,
-41 bottle thumbnails) travels in `apps/mosa/`, with nothing fetched at runtime.
+75 works and 41 bottles as pixel art) travels in `apps/mosa/`, with nothing fetched at runtime.
 
 ## 2. Play
 
-- **Clock in.** You start in the Lobby. The torch lights a few tiles around
-  you and a beam ahead; tiles you've seen stay faintly remembered.
-- **Sweep.** Bottles from the live MOSA Bottles collection lie where the
-  catalogue hunts them (busier rooms in MOSA are messier on the badge). Walk
-  into one to pick it up. The LEDs act as a metal detector: the nearest
-  bottle's colour, blinking faster as you close in.
-- **Pop.** Balloons drift in every room. SELECT pops one in reach. Some drop a bottle.
-- **Stamp.** Entering a room, clearing Floor 1's balloons, finding the
-  Crocodile Vault: the same goals as MOSA's room programmes, stamped on the
-  badge's Visitor Map.
+- **Clock in.** 23:58, the janitor's cupboard. The janitor takes the
+  flashlight off its hook and clicks it on; the bulb goes out. The curator's
+  note lists tonight's rounds: three works are off their walls, in three
+  rooms, the first one door from the Lobby.
+- **Rounds.** The flashlight is one hard cone ahead and a small pool at your
+  feet; everything else is dark, with a faint memory of what you've seen.
+  Exits glow.
+- **Look.** The works hang where the HD museum hangs them. SELECT by one
+  shows it up close, with its title, artist and room, and **SEE IT IN HD**
+  shows the QR to the real work. Everything you've looked at is in THE ART.
+- **Catch.** Thieves creep about in the dark. An empty frame tells you what
+  was taken. Hold the light on a thief and they drop the work and bolt; the
+  LEDs sweep as you close in, and the museum map blinks the rooms they're in.
+  Catch all three and the lights come up: **ALL CLEAR**, the night's tally,
+  and the shift report one scan away.
+- **Sweep.** Bottles from the live MOSA Bottles collection lie on the HD
+  museum's find spots, picked as the catalogue hunts them. Walk into one to
+  pick it up. The LEDs act as a metal detector: the nearest bottle's colour,
+  blinking faster as you close in.
+- **Stamp.** Entering a room and finding the Crocodile Vault: the same goals
+  as MOSA's room programmes. An uncatalogued room stays off the museum map
+  until you find it.
 - **Meet.** Another badge running Night Shift nearby shows up on the pause
   screen. Wave. Work the same room and the mythical may turn up.
 
@@ -76,6 +94,7 @@ light, sized for a phone at arm's length:
 | On the badge | QR target | Exists today? |
 | --- | --- | --- |
 | A found bottle | `mosa.center/at/find/bottle/<piece>`, MOSA's canonical find link | **Yes**: lands in front of that find |
+| A work, up close | The work's own link from MOSA's hung-works data (its Mallow or 6529 page); else its room, else `/at/defcon` | **Yes**. Sirials open the museum: MOSA has no per-work link for them yet |
 | Lanyard, About | `mosa.center/at/defcon` | Needs a curated link in the console (Links → New): kind *room* or *entrance*, welcome copy. Until then it opens the Lobby as usual |
 | Partner entrance plaque | `mosa.center/at/<partner>` (e.g. `/at/cycol`) | **Yes** |
 | Janitor Room plaques | `mosa.center/at/bp26` | **Yes** |
@@ -89,7 +108,7 @@ the museum doesn't understand.
 
 The visitor arrives on a phone or laptop, in the real building, in front of
 the thing they found in the dark. From there it's MOSA as usual: walk, look,
-pop balloons, collect. The badge's job is done once they arrive.
+collect. The badge's job is done once they arrive.
 
 What the museum can add to close the loop (specified in
 [MOSA-INTEGRATION.md](MOSA-INTEGRATION.md)):

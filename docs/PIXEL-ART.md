@@ -1,7 +1,7 @@
 # Pixel art for the bottles
 
 Every bottle on the badge is a **16×24 sprite with at most 15 colours plus
-transparency**. It shows at 1× in the shift record, 3× on the find card and 4×
+transparency**. It shows at 1× in BOTTLES, 3× on the find card and 4×
 on the title screen.
 
 There are two sources, and the sync picks one per bottle:
@@ -14,6 +14,16 @@ There are two sources, and the sync picks one per bottle:
 `docs/pixel-sheet.png` (`pnpm pixel sheet`) shows every bottle's cover next to
 its badge sprite, marked HAND or AUTO. Hand-made art is how a bottle goes from
 "recognisable" to "belongs on this badge".
+
+### The works
+
+The art on the walls (Community Gallery, the Poet Toads show, the Sirials) is
+pixelized by the sync, not drawn by hand: the image is fitted to at most 24×24
+at its own aspect, given a little more saturation, and reduced to at most 15
+colours, with no transparency (a work is a whole rectangle). It hangs on the
+wall as a 9×9 sample in a frame, and shows at the largest whole scale that fits
+on the art card and in THE ART, in a paper frame on a dark mat. A video work
+uses its poster frame.
 
 ## The rules for hand art
 

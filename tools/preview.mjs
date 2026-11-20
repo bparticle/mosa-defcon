@@ -40,51 +40,83 @@ async function main() {
   await b.frames(20);
   await shot('01-title');
 
-  await b.press('down'); await b.press('a'); await b.frames(12);
-  await shot('02-lanyard');
+  // The intro: the janitor's cupboard, then the flashlight clicks on.
+  await b.press('a'); await b.frames(48);
+  await shot('02-intro-cupboard');
+  await b.frames(90);
+  await shot('03-intro-flashlight');
+  await b.press('a'); await b.frames(2);
+  await shot('04-briefing');
+  await b.press('a'); await b.frames(10);
+  await b.hold('up', 14); await b.hold('left', 6); await b.frames(2);
+  await shot('05-lobby-walk');
+
+  // A work on its wall, up close, and the way to the real one.
+  b.lua('mosa_debug.travel("room1")'); await b.frames(70);
+  b.lua('mosa_debug.near("art")'); b.lua('local gm = mosa_debug.game(); gm.py = gm.py + 1; gm.fy = -1; gm.fx = 0'); await b.frames(3);
+  await shot('06-art-on-the-wall');
+  b.lua('mosa_debug.near("art")'); await b.frames(2);
+  await b.press('a'); await b.frames(2);
+  await shot('07-art-card');
+  await b.press('a'); await b.frames(2);
+  await shot('08-see-it-in-hd');
   await b.press('b');
 
-  await b.press('up'); await b.press('a'); await b.frames(10);
-  await shot('03-lobby-arrival');
-  await b.hold('up', 25); await b.hold('left', 12); await b.frames(4);
-  await shot('04-lobby-walk');
-
-  b.lua('mosa_debug.near("balloon")'); await b.frames(2);
-  await shot('05-balloon-in-reach');
-  await b.press('a', { after: 6 });
-  await shot('06-balloon-pop');
-
-  b.lua('mosa_debug.to_bottle()'); await b.frames(4);
-  await shot('07-found-card');
-  await b.press('a'); await b.frames(4);
-  await shot('08-museum-link-qr');
-  await b.press('b');
-
-  b.lua('mosa_debug.travel("room1")'); await b.frames(6);
-  await shot('09-floor1-corridor');
-  b.lua('mosa_debug.travel("room4")'); await b.frames(3); await b.hold('right', 20);
-  await shot('10-community-gallery');
-  if (b.lua('return mosa_debug.near("mark")') === true) {
-    await b.frames(2);
-    await b.press('a');
-    await shot('11-plaque');
+  // Tonight's first thief: the empty frame, the thief in the light, the work recovered.
+  const heist = String(b.lua('return mosa_debug.heist()')).split(',');
+  b.lua(`mosa_debug.travel("${heist[0]}")`); await b.frames(70);
+  if (b.lua('return mosa_debug.near("missing")') === true) {
+    await b.frames(2); await b.press('a');
+    await shot('09-empty-frame');
     await b.press('b');
   }
+  b.lua('mosa_debug.face_thief()'); await b.frames(8);
+  await shot('10-thief-in-the-light');
+  for (let i = 0; i < 60 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+  await shot('11-recovered');
+  await b.press('b');
+
+  b.lua('mosa_debug.to_bottle()'); await b.frames(4);
+  await shot('12-bottle-card');
+  await b.press('b');
+
+  b.lua('mosa_debug.travel("room4")'); await b.frames(70); await b.hold('right', 16);
+  await shot('13-community-gallery');
 
   await b.press('b');
-  await shot('12-pause');
-  await b.press('down'); await b.press('a');
-  await shot('13-visitor-map');
+  await shot('14-clipboard');
+  await b.press('down'); await b.press('a'); await b.frames(2);
+  await shot('15-museum-map');
   await b.press('b');
-  await b.press('down'); await b.press('a'); await b.frames(6);
-  await shot('14-shift-record');
+  await b.press('down'); await b.press('a'); await b.frames(10);
+  await shot('16-the-art');
+  await b.press('b');
+  await b.press('down'); await b.press('a'); await b.frames(10);
+  await shot('17-bottles');
   for (let i = 0; i < 4; i++) await b.press('down');
   await b.press('a'); await b.frames(4);
-  await shot('15-shift-report-qr');
-
+  await shot('18-shift-report-qr');
   await b.press('b'); await b.press('b'); await b.press('b');
+
+  // The rest of tonight's thieves, and the lights come up.
+  for (const id of heist.slice(1)) {
+    b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
+    b.lua('mosa_debug.face_thief()');
+    for (let i = 0; i < 60 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+    await b.press('b'); await b.frames(2);
+  }
+  await b.frames(100);
+  await shot('19-all-clear');
+  await b.press('b'); await b.frames(4);
+
   b.meshIn('7K2Q9M', { w: '@pixeljanitor' }); await b.frames(3);
-  await shot('16-wave-received');
+  await shot('20-wave-received');
+
+  const t = await bootApp();
+  for (let i = 0; i < 3; i++) await t.press('down');
+  await t.press('a'); await t.frames(12);
+  t.screenshot(path.join(OUT, '21-lanyard.png'), 2);
+
 
   console.log(shots.join('\n'));
   if (b.errors.length) throw new Error(JSON.stringify(b.errors));

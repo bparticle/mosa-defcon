@@ -1,8 +1,9 @@
--- The janitor's record: what this badge has found, which rooms it has stamped.
+-- The janitor's record: the bottles picked up, the works seen, the rooms
+-- stamped, the thieves caught.
 -- Kept in the app's Solana OS storage (data.json on the microSD card, 16 KB),
 -- so it survives relaunches and app updates; uninstalling the app clears it.
 --
--- Indices are the APPEND-ONLY registry in mosa.lock.json (piece.idx, room.idx),
+-- Indices are the APPEND-ONLY registry in mosa.lock.json (piece.idx, room.idx, work.idx),
 -- so a record written by an older release still means the same pieces after a
 -- data sync adds new ones. The bitsets are stored as hex strings.
 local util = require("util")
@@ -13,10 +14,12 @@ local SCHEMA = 1
 
 local state = {
   found = {},   -- piece idx → true
+  seen = {},    -- work idx → true (looked at on its wall)
   rooms = {},   -- room idx → true (visited)
   goals = {},   -- "roomId/goalId" → true
   pickups = 0,
-  pops = 0,
+  caught = 0,
+  cleared = 0,  -- shifts that ended with every work back on its wall
   shifts = 0,
 }
 record.state = state
@@ -34,10 +37,12 @@ local function save()
   storage.set(KEY, {
     v = SCHEMA,
     found = hex(state.found),
+    seen = hex(state.seen),
     rooms = hex(state.rooms),
     goals = table.concat(goals, ";"),
     pickups = state.pickups,
-    pops = state.pops,
+    caught = state.caught,
+    cleared = state.cleared,
     shifts = state.shifts,
   })
 end
@@ -47,11 +52,13 @@ function record.load()
   -- Nothing saved yet (or a future schema we do not know): start clean.
   if type(saved) ~= "table" or saved.v ~= SCHEMA then saved = {} end
   state.found = util.bits_from_hex(saved.found or "")
+  state.seen = util.bits_from_hex(saved.seen or "")
   state.rooms = util.bits_from_hex(saved.rooms or "")
   state.goals = {}
   for k in tostring(saved.goals or ""):gmatch("[^;]+") do state.goals[k] = true end
   state.pickups = tonumber(saved.pickups) or 0
-  state.pops = tonumber(saved.pops) or 0
+  state.caught = tonumber(saved.caught) or 0
+  state.cleared = tonumber(saved.cleared) or 0
   state.shifts = tonumber(saved.shifts) or 0
 end
 
@@ -80,10 +87,22 @@ function record.stamp(room_id, goal_id)
   return true
 end
 
-function record.pop()
-  state.pops = state.pops + 1
-  -- Written lazily: a balloon is cheap, a write to the card is not.
-  if state.pops % 5 == 0 then save() end
+--- Returns true when the work is new to this badge.
+function record.see(work)
+  if state.seen[work.idx] then return false end
+  state.seen[work.idx] = true
+  save()
+  return true
+end
+
+function record.catch()
+  state.caught = state.caught + 1
+  save()
+end
+
+function record.clear()
+  state.cleared = state.cleared + 1
+  save()
 end
 
 function record.clock_in()
@@ -97,6 +116,10 @@ end
 
 function record.found_count()
   return util.count(state.found)
+end
+
+function record.seen_count()
+  return util.count(state.seen)
 end
 
 --- The shift report: a short code the museum can read back (docs/SOLANA.md).
