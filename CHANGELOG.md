@@ -5,6 +5,11 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-20
+
+The same game as 0.6.0, resubmitted to the store with a request for a daily
+!LAMPs allowance (the store doesn't let a submitted version change).
+
 ## [0.6.0] - 2026-11-20
 
 The night: a clock to dawn, a desk that keeps sending work, and a reason to come back tomorrow.
@@ -235,7 +240,8 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.6.0...HEAD
+[Unreleased]: ../../compare/v0.6.1...HEAD
+[0.6.1]: ../../compare/v0.6.0...v0.6.1
 [0.6.0]: ../../compare/v0.5.0...v0.6.0
 [0.5.0]: ../../compare/v0.4.2...v0.5.0
 [0.4.2]: ../../compare/v0.4.1...v0.4.2
