@@ -20,7 +20,7 @@ The Rounds: a story, the real art, and a flashlight you can feel.
 - **The real art, on its real walls.** The 75 works MOSA hangs, Community
   Gallery, the Poet Toads show and every pinned Sirial, are synced from the
   MOSA repo and hung where the HD museum hangs them, as pixel miniatures (up to
-  24×24, 15 colours). SELECT by one looks at it up close; SEE IT IN HD shows a
+  24×24, a few flat colours, crisp like the bottles). SELECT by one looks at it up close; SEE IT IN HD shows a
   QR to the real work (its Mallow or 6529 page, else the museum).
 - **All clear.** Catching the last thief brings the lights up: the night's
   tally, the recovered works side by side, and the museum one scan away.

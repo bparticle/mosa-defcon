@@ -190,24 +190,112 @@ export function artSize(aspect) {
     : { w: Math.max(8, Math.round(ART * a)), h: ART };
 }
 
-/** A painting → { idx, centres, w, h }: an area-averaged miniature in up to 15 colours. */
-export async function pixelizeArt(buf, { aspect, colours = MAX_COLOURS } = {}) {
+// Averaging a painting down to 24 px gives a blurry thumbnail: every cell is a
+// mix of its colours, and 15 shades of mud. The badge wants pixel art, like the
+// bottles: a handful of flat colours from the work itself, and every pixel one
+// of them. So the palette is picked from the full-size image, each cell takes
+// the colour it holds most of (a vote, never an average), rarer colours vote a
+// little louder so eyes and outlines survive, and lone pixels are cleaned up.
+// Ink drawings (most Sirials) get their dark lines thickened first, or the
+// vote would hand every cell to the paper.
+const ART_CELL = 8;          // source pixels per sprite pixel
+const ART_COLOURS = 7;       // like the bottles
+const INK_COLOURS = 4;       // black, paper and a grey or two
+const INK_SATURATION = 0.12; // mean saturation below this: an ink drawing
+const MERGE = 40;            // palette colours closer than this (RGB distance) are one
+
+/** Mean saturation (HSV) of an RGB buffer, 0..1. */
+function saturation(data) {
+  let sum = 0;
+  const n = data.length / 3;
+  for (let i = 0; i < data.length; i += 3) {
+    const mx = Math.max(data[i], data[i + 1], data[i + 2]), mn = Math.min(data[i], data[i + 1], data[i + 2]);
+    sum += mx ? (mx - mn) / mx : 0;
+  }
+  return sum / n;
+}
+
+/** Thicken dark lines: each pixel takes its darkest neighbour within r. */
+function thickenInk(src, w, h, r) {
+  const out = Buffer.from(src);
+  const lum = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) lum[i] = src[i * 3] * 0.3 + src[i * 3 + 1] * 0.59 + src[i * 3 + 2] * 0.11;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let bi = y * w + x;
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          if (lum[yy * w + xx] < lum[bi]) bi = yy * w + xx;
+        }
+      }
+      src.copy(out, (y * w + x) * 3, bi * 3, bi * 3 + 3);
+    }
+  }
+  return out;
+}
+
+/** A pixel with no same-coloured 4-neighbour takes the colour most of them share. */
+function cleanOrphans(idx, w, h) {
+  const src = idx.slice();
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x, n = [];
+      if (x > 0) n.push(src[i - 1]);
+      if (x < w - 1) n.push(src[i + 1]);
+      if (y > 0) n.push(src[i - w]);
+      if (y < h - 1) n.push(src[i + w]);
+      if (n.includes(src[i])) continue;
+      const count = new Map();
+      for (const v of n) count.set(v, (count.get(v) ?? 0) + 1);
+      const [best, k] = [...count].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+      if (k >= 2) idx[i] = best;
+    }
+  }
+}
+
+/** A painting → { idx, centres, w, h, ink }: a pixel-art miniature in a few flat colours. */
+export async function pixelizeArt(buf, { aspect } = {}) {
   const meta = await sharp(buf).metadata();
   const { w, h } = artSize(aspect ?? (meta.width && meta.height ? meta.width / meta.height : 1));
-  // Down in two steps: an area average to 4x, then a sharp pick of the cell
-  // centre, so edges stay crisp but colours aren't sampled from noise.
-  const { data } = await sharp(buf).flatten({ background: '#000000' }).removeAlpha()
-    .resize(w * 4, h * 4, { fit: 'cover', kernel: 'lanczos3' })
-    .modulate({ saturation: 1.15 })
-    .resize(w, h, { kernel: 'mitchell' })
-    .raw().toBuffer({ resolveWithObject: true });
-  const cells = [];
-  for (let i = 0; i < w * h; i++) cells.push([data[i * 3], data[i * 3 + 1], data[i * 3 + 2]]);
-  const { centres, nearest } = quantize(cells, colours);
+  const BW = w * ART_CELL, BH = h * ART_CELL;
+  const base = sharp(buf).flatten({ background: '#000000' }).removeAlpha()
+    .resize(BW, BH, { fit: 'cover', kernel: 'lanczos3' }).normalise();
+  const ink = saturation(await base.clone().raw().toBuffer()) < INK_SATURATION;
+  // A median takes the grain and the finest hatching out before the vote.
+  let data = await base.modulate({ saturation: 1.3 }).median(3).raw().toBuffer();
+  if (ink) data = thickenInk(data, BW, BH, 1);
+
+  const pixels = [];
+  for (let i = 0; i < BW * BH; i += 3) pixels.push([data[i * 3], data[i * 3 + 1], data[i * 3 + 2]]);
+  let { centres } = quantize(pixels, ink ? INK_COLOURS : ART_COLOURS);
+  centres = centres.filter((c, i) => !centres.slice(0, i).some((o) => dist(o, c) < MERGE * MERGE));
+  const nearest = (p) => {
+    let bi = 0, bd = Infinity;
+    centres.forEach((c, i) => { const d = dist(p, c); if (d < bd) { bd = d; bi = i; } });
+    return bi;
+  };
+  const q = new Uint8Array(BW * BH), freq = new Array(centres.length).fill(0);
+  for (let i = 0; i < BW * BH; i++) { q[i] = nearest([data[i * 3], data[i * 3 + 1], data[i * 3 + 2]]); freq[q[i]]++; }
+  // The vote: a colour's share of the cell, louder the rarer it is overall.
+  const loud = freq.map((f) => (BW * BH / Math.max(1, f)) ** (ink ? 0.25 : 0.5));
   // Palette index 0 is "clear"; a picture has none, so every pixel is 1..n.
   const idx = new Uint8Array(w * h);
-  cells.forEach((c, i) => { idx[i] = nearest(c) + 1; });
-  return { ...compact({ idx, centres }), w, h };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const votes = new Array(centres.length).fill(0);
+      for (let dy = 0; dy < ART_CELL; dy++) {
+        for (let dx = 0; dx < ART_CELL; dx++) votes[q[(y * ART_CELL + dy) * BW + x * ART_CELL + dx]]++;
+      }
+      let bi = 0, bs = -1;
+      votes.forEach((v, i) => { if (v * loud[i] > bs) { bs = v * loud[i]; bi = i; } });
+      idx[y * w + x] = bi + 1;
+    }
+  }
+  cleanOrphans(idx, w, h);
+  if (ink) cleanOrphans(idx, w, h);
+  return { ...compact({ idx, centres }), w, h, ink };
 }
 
 /** Lone pixels: a speck inside a flat area takes the area's colour; a speck in the air goes. */

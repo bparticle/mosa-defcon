@@ -18,9 +18,15 @@ its badge sprite, marked HAND or AUTO. Hand-made art is how a bottle goes from
 ### The works
 
 The art on the walls (Community Gallery, the Poet Toads show, the Sirials) is
-pixelized by the sync, not drawn by hand: the image is fitted to at most 24×24
-at its own aspect, given a little more saturation, and reduced to at most 15
-colours, with no transparency (a work is a whole rectangle). It hangs on the
+pixelized by the sync, not drawn by hand, to look like the bottles rather than
+a shrunken thumbnail. The image is fitted to at most 24×24 at its own aspect.
+A palette of 7 flat colours is picked from the full-size image (4 for an ink
+drawing, which most Sirials are), and each sprite pixel takes the colour its
+8×8 patch holds most of: a vote, never an average, so there's no blur. Rarer
+colours vote a little louder, so eyes and outlines survive. Ink drawings get
+their dark lines thickened first, and pixels left alone with no same-coloured
+neighbour are cleaned up. There's no transparency (a work is a whole
+rectangle). A miniature is a likeness, not a copy. It hangs on the
 wall as a 9×9 sample in a frame, and shows at the largest whole scale that fits
 on the art card and in THE ART, in a paper frame on a dark mat. A video work
 uses its poster frame.
