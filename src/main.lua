@@ -49,12 +49,18 @@ for _, c in ipairs(DATA.collections) do collections[c.slug] = c end
 -- changes: no CPU spent, and the badge lasts longer on a lanyard.
 local dirty = true
 local function invalidate() dirty = true end
+-- An overlay just pushed: the canvas still holds the frame beneath it, so
+-- only the overlay is drawn (a card over the walk costs a card, not both).
+local fresh_overlay = false
 
 local function top() return stack[#stack] end
-local function push(s) stack[#stack + 1] = s; dirty = true; if s.enter then s:enter() end end
+local function push(s)
+  stack[#stack + 1] = s; dirty = true; fresh_overlay = s.under == true
+  if s.enter then s:enter() end
+end
 local function pop()
   local s = table.remove(stack)
-  dirty = true
+  dirty = true; fresh_overlay = false
   if s and s.leave then s:leave() end
   if top() and top().resume then top():resume() end
 end
@@ -158,7 +164,7 @@ end
 
 -- ── scenes ───────────────────────────────────────────────────────────────────
 
-local Splash, Title, Lanyard, Intro, Briefing, Game, Pause, Card, ArtCard, Plaque, Code, Grid, Map, Finale, About
+local Splash, Title, Lanyard, Intro, Briefing, Game, Pause, Card, ArtCard, Code, Grid, Map, Finale, About
 Intro, Briefing = story.scenes({ top = top, push = push, pop = pop, flash = flash, plan_heist = plan_heist,
   works_by_idx = works_by_idx, rooms_by_id = rooms_by_id, start = function(plan) push(Game.new(plan)) end })
 
@@ -396,6 +402,7 @@ function Game:travel(to, from)
       room:resume(coroutine.yield)
     end
     self.px, self.py = room:arrival(from, coroutine.yield)
+    world.warm(coroutine.yield) -- the beam's fade, once a session
     coroutine.yield() -- arriving and the first draw get a tick of their own
     return room
   end)
@@ -412,6 +419,7 @@ function Game:step_loading()
   self.loading = nil
   self.room = room
   self:arrive(self.arriving)
+  self.dark = true -- the tick it arrives, the room isn't drawn yet: the iris is shut
   return true
 end
 
@@ -573,6 +581,7 @@ end
 function Game:draw()
   local room = self.room
   g.clear(ui.BG)
+  if self.dark then self.dark = nil; return end
   if not room then
     -- The threshold: a doorway of light while the next room is laid out.
     g.fill_rect(150, 90, 20, 54, ui.CONC)
@@ -610,9 +619,9 @@ function Game:draw()
   end
   if self.tips and t < self.tips then ui.hints({ "d-pad", "walk", "a", "look", "b", "clipboard" }); return end
   local hint
+  -- SELECT is offered only where it does something: a work on its wall.
   local a = room:art_near(self.px, self.py)
-  if a then hint = { "a", a.missing and "empty frame" or "look" }
-  elseif room:mark_near(self.px, self.py) then hint = { "a", "read" } end
+  if a and not a.missing then hint = { "a", "look" } end
   if hint then ui.hints(hint)
   else
     local d = room:nearest_door(self.px, self.py, 2.6)
@@ -628,17 +637,11 @@ function Game:button(key)
   if key == "b" then push(Pause.new(self))
   elseif key == "a" then
     local a = self.room:art_near(self.px, self.py)
-    if a then
-      if a.missing then push(Plaque.empty(a.work, self.room.data))
-      else
-        if record.see(a.work) then self.tonight.seen = self.tonight.seen + 1; a.new = true end
-        push(ArtCard.new(a.work, a.new and "new" or "look", self.room.data))
-        a.new = nil
-      end
-      return
+    if a and not a.missing then
+      if record.see(a.work) then self.tonight.seen = self.tonight.seen + 1; a.new = true end
+      push(ArtCard.new(a.work, a.new and "new" or "look", self.room.data))
+      a.new = nil
     end
-    local m = self.room:mark_near(self.px, self.py)
-    if m then push(Plaque.new(m, self.room.data)) end
   end
 end
 
@@ -718,45 +721,6 @@ function Card:button(key)
   if key == "a" then
     pop()
     push(Code.new(self.piece.url, "FIND IT IN THE MUSEUM", self.piece.title, "by " .. self.piece.artist))
-  elseif key == "b" then pop() end
-end
-
--- A plaque for the museum's furniture, and for an empty frame.
-local PLAQUES = {
-  vitrine = { "SPECIMEN CASE", "One of every bottle there is to find, under glass. The rarest stand as plaster casts of their own shape until someone finds one." },
-  flapboard = { "DEPARTURES BOARD", "Every collectible is a departure. Editions tick down; the last one reads DEPARTED." },
-  postcards = { "POSTCARD WALL", "Every souvenir print made in the museum hangs here, and visitors heart the ones they like." },
-  tickets = { "TICKET MACHINE", "Admission is printed here. A ticket opens rooms a walk-in cannot." },
-  vending = { "VENDING MACHINE", "Key a lane, pay, pull the flap. It sells the room's fizzy bottle." },
-  entrance = { "PARTNER ENTRANCE", "A door into MOSA kept by one of its partners." },
-}
-Plaque = { name = "plaque" }
-Plaque.__index = Plaque
-Plaque.under = true
-Plaque.static = true
-function Plaque.new(mark, room) return setmetatable({ mark = mark, room = room }, Plaque) end
-function Plaque.empty(work, room)
-  return setmetatable({ room = room, work = work, info = { "EMPTY FRAME",
-    work.title .. " by " .. work.artist .. " hangs here. Tonight there is only a nail. The thief can't be far." } }, Plaque)
-end
-function Plaque:info_for()
-  return self.info or PLAQUES[self.mark.kind] or { self.mark.kind:upper(), "" }
-end
-function Plaque:url() return self.mark.url or self.room.link or DATA.home end
-function Plaque:draw()
-  local info = self:info_for()
-  ui.slab(40, 36, 240, 138)
-  g.fill_rect(40, 36, 240, 14, ui.PAPER_INK)
-  ui.tracked(info[1], 48, 39, ui.PAPER, 1, 2)
-  g.text(ui.fit(self.mark and (self.mark.label or self.room.name) or self.room.name, 212), 54, 60, ui.MUTED)
-  ui.paragraph(info[2], 54, 78, 214, ui.PAPER_INK, 1, 11)
-  ui.hints(self.work and { "b", "back" } or { "a", "museum link", "b", "back" }, 156, ui.MUTED, true)
-end
-function Plaque:button(key)
-  if key == "a" and not self.work then
-    local info = self:info_for()
-    pop()
-    push(Code.new(self:url(), "IN THE MUSEUM", info[1], self.room.name))
   elseif key == "b" then pop() end
 end
 
@@ -1190,7 +1154,8 @@ local function draw()
   if n == 0 or (stack[n].static and not dirty) then return end
   dirty = false
   local first = n
-  while first > 1 and stack[first].under do first = first - 1 end
+  if fresh_overlay then fresh_overlay = false
+  else while first > 1 and stack[first].under do first = first - 1 end end
   for i = first, n do stack[i]:draw() end
   -- A toast never covers a QR code, a card or a list: it waits for the walk.
   local s = top()

@@ -57,7 +57,7 @@ end
 function Room:lay(pause)
   local charge = pacer(pause)
   local data, w, h = self.data, self.w, self.h
-  local cells, door_at, mark_at, art_at = {}, {}, {}, {}
+  local cells, door_at, art_at = {}, {}, {}
   for i = 1, w * h do cells[i] = VOID end
   for _, rect in ipairs(data.rects) do
     for y = math.max(0, rect[2]), math.min(h - 1, rect[2] + rect[4] - 1) do
@@ -74,7 +74,7 @@ function Room:lay(pause)
     for y = m.y, m.y + m.h - 1 do
       for x = m.x, m.x + m.w - 1 do
         local i = y * w + x + 1
-        if cells[i] == FLOOR then cells[i] = BLOCK; mark_at[i] = m end
+        if cells[i] == FLOOR then cells[i] = BLOCK end
       end
     end
   end
@@ -104,7 +104,7 @@ function Room:lay(pause)
   -- What the torch has already shown, one byte per tile ("1" = seen).
   local explored, seen = {}, self.seen
   for i = 1, w * h do explored[i] = seen ~= nil and seen:byte(i) == 49 end
-  self.cells, self.door_at, self.mark_at, self.art_at = cells, door_at, mark_at, art_at
+  self.cells, self.door_at, self.art_at = cells, door_at, art_at
   self.explored, self.seen = explored, nil
 end
 
@@ -116,7 +116,7 @@ function Room:suspend()
   local parts = {}
   for i = 1, self.w * self.h do parts[i] = self.explored[i] and "1" or "0" end
   self.seen = table.concat(parts)
-  self.cells, self.explored, self.door_at, self.mark_at, self.art_at = nil, nil, nil, nil, nil
+  self.cells, self.explored, self.door_at, self.art_at = nil, nil, nil, nil
   for _, a in ipairs(self.art) do a.mini = nil end
 end
 
@@ -261,18 +261,6 @@ end
 
 function Room:door_under(x, y)
   return self.door_at[math.floor(y) * self.w + math.floor(x) + 1]
-end
-
---- The landmark within reach of (x, y), if any.
-function Room:mark_near(x, y)
-  local cx, cy = math.floor(x), math.floor(y)
-  for dy = -1, 1 do
-    for dx = -1, 1 do
-      local m = self.mark_at[(cy + dy) * self.w + (cx + dx) + 1]
-      if m and cx + dx >= 0 and cx + dx < self.w then return m end
-    end
-  end
-  return nil
 end
 
 --- The work within reach of (x, y): hung beside the tile you stand on or next to.
@@ -548,6 +536,107 @@ local function draw_frame(a, x, y)
   end
 end
 
+-- The beam fades out: from FADE of its reach on, an ordered (4x4 Bayer)
+-- pattern lets the dark back in, a little more in each of the bands, until
+-- the cone's end. The pool round the feet stays a hard circle. The dark
+-- pixels are the memory's colours, so the beam dissolves into what the
+-- room looks like after the torch has passed.
+local BAYER = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 }
+local FADE = 0.5
+local DARK = { 3, 6, 9, 12 } -- of 16 pixels, band by band
+-- MASK[band][row % 4 + 1]: a bit per x (mod 4) that goes dark on that row.
+local MASK = {}
+for k, n in ipairs(DARK) do
+  MASK[k] = {}
+  for r = 0, 3 do
+    local m = 0
+    for x = 0, 3 do if BAYER[r * 4 + x + 1] < n then m = m | (1 << x) end end
+    MASK[k][r + 1] = m
+  end
+end
+
+-- The memory's colour of tile (tx, ty) on scanline r of its row.
+local function memory_colour(cells, w, h, tx, ty, r)
+  if ty < 0 or ty >= h or tx < 0 or tx >= w then return ui.BG end
+  local i = ty * w + tx + 1
+  local c = cells[i]
+  if c == VOID then return ui.BG end
+  if c == WALL then
+    local below = cells[i + w]
+    return (r >= TILE - 5 and below and below ~= WALL) and FACE_M or WALL_M
+  end
+  return FLOOR_M
+end
+
+-- Dots are 2x2 screen pixels: the pattern reads as pixel art, and it is a
+-- quarter of the draws a 1-pixel dither would cost. Which dots go dark
+-- depends only on the beam's direction (the d-pad gives eight), so each
+-- direction's dots are worked out once, relative to the lens, and a frame
+-- only places them: the pattern travels with the light.
+local fades = {}
+local function fade_key(fx, fy) return math.floor(fx * 100 + 0.5) * 1000 + math.floor(fy * 100 + 0.5) end
+local function fade_dots(fx, fy)
+  local dots = {}
+  local R, n = REACH, #DARK
+  local q = {}
+  for k = 0, n do local rk = R * (FADE + (1 - FADE) * k / n); q[k + 1] = rk * rk end
+  local L = light.new(0, 0, fx, fy, R, HALF, 0, 0, 0)
+  local top = math.floor(-R) // 2 * 2
+  for oy = top, math.ceil(R), 2 do
+    local lo, hi = light.cone(L, oy)
+    if lo then
+      local v = (oy // 2) % 4
+      for u = math.ceil(lo / 2), math.floor((hi - 1) / 2) do
+        local dx, dy = u * 2 + 1, oy + 1
+        local dd = dx * dx + dy * dy
+        if dd >= q[1] then
+          local band = 1
+          while band < n and dd >= q[band + 1] do band = band + 1 end
+          if (MASK[band][v + 1] >> (u % 4)) & 1 == 1 then dots[#dots + 1] = string.char(u + 128, oy // 2 + 128) end
+        end
+      end
+    end
+  end
+  -- Two bytes a dot (its column and row, in dots, offset by 128): a few
+  -- hundred bytes a direction instead of a table of numbers.
+  fades[fade_key(fx, fy)] = table.concat(dots)
+end
+
+--- Work out the fade for the eight directions the d-pad gives, one a call
+--- to `pause`; the room loader runs it once (a frame draws no fade for a
+--- direction it doesn't have yet).
+function world.warm(pause)
+  local s = math.sqrt(0.5)
+  for _, d in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 }, { s, s }, { -s, s }, { s, -s }, { -s, -s } }) do
+    if not fades[fade_key(d[1], d[2])] then fade_dots(d[1], d[2]); if pause then pause() end end
+  end
+end
+
+local function dither(self, L, cx, cy)
+  local cells, w, h = self.cells, self.w, self.h
+  local bx, by = math.floor(L.ax), math.floor(L.ay)
+  local dots = fades[fade_key(L.fx, L.fy)]
+  if not dots then return end
+  local W1, H1 = ui.W - 2, ui.H - 2
+  local tile, ty, col = -1, -1, nil
+  local byte = string.byte
+  for i = 1, #dots, 2 do
+    local du, dv = byte(dots, i, i + 1)
+    local x, y = bx + du * 2 - 256, by + dv * 2 - 256
+    if x >= 0 and x <= W1 and y >= 0 and y <= H1 then
+      local tx, sy = (x + cx) // TILE, y + cy
+      local t2 = sy // TILE
+      if tx ~= tile or t2 ~= ty then
+        tile, ty = tx, t2
+        col = memory_colour(cells, w, h, tx, t2, sy % TILE)
+      elseif sy % TILE == TILE - 5 or sy % TILE == TILE - 4 then
+        col = memory_colour(cells, w, h, tx, t2, sy % TILE)
+      end
+      hline(x, y, 2, col, 2)
+    end
+  end
+end
+
 --- Draw the room around a janitor at (px, py) facing (fx, fy). `walk` is the
 --- janitor's stride (0, 1, 2). Returns the light, for asking what it shows.
 function Room:draw(px, py, fx, fy, t, walk)
@@ -648,6 +737,7 @@ function Room:draw(px, py, fx, fy, t, walk)
     yy = yy + h
   end
   remember()
+  dither(self, L, cx, cy)
 
   -- Exits glow in the dark like exit signs, so the way out is never lost: a
   -- chevron pointing through the doorway, for the doors within a few rooms' walk.

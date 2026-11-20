@@ -74,6 +74,17 @@ function light.row(L, y)
   return a1, b1, a2, b2
 end
 
+--- The cone alone on screen row y (no pool): lo, hi as floats, or nil.
+function light.cone(L, y)
+  local dy = y + 0.5 - L.ay
+  if dy * dy > L.reach * L.reach then return nil end
+  local h = math.sqrt(L.reach * L.reach - dy * dy)
+  local lo, hi = clip(L.ax - h, L.ax + h, L.n1x, L.n1y, L.ax, dy)
+  lo, hi = clip(lo, hi, L.n2x, L.n2y, L.ax, dy)
+  if lo > hi then return nil end
+  return lo, hi
+end
+
 --- Is the point (x, y) in the light?
 function light.lit(L, x, y)
   local dx, dy = x - L.px, y - L.py

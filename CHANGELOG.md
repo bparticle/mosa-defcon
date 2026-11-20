@@ -5,6 +5,19 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-20
+
+The beam: a flashlight that fades into the dark, and nothing to read in the rooms.
+
+### Changed
+
+- The flashlight's beam dithers into the dark: a hard circle of light round
+  the janitor, then a beam that breaks up into a pixel pattern toward its end.
+- Nothing to read in the rooms any more: the furniture plaques (specimen case,
+  departures board, partner entrances and the rest) and the empty-frame label
+  are gone. SELECT is offered only by a work on its wall. The furniture is
+  still there to walk around, and an empty frame still shows what was taken.
+
 ## [0.4.2] - 2026-11-20
 
 ### Fixed
@@ -186,7 +199,8 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.4.2...HEAD
+[Unreleased]: ../../compare/v0.5.0...HEAD
+[0.5.0]: ../../compare/v0.4.2...v0.5.0
 [0.4.2]: ../../compare/v0.4.1...v0.4.2
 [0.4.1]: ../../compare/v0.4.0...v0.4.1
 [0.4.0]: ../../compare/v0.3.0...v0.4.0

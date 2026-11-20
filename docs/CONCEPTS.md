@@ -132,7 +132,7 @@ is real MOSA content.
    installable from the App Store. No MOSA code changes required; one curated
    link (`/at/defcon`) to create in the console.
 2. **Next:** the museum reads `?shift=` and welcomes badge visitors; booth
-   beacon (E); `/at/room/<id>` canonical links so plaques land in their room.
+   beacon (E); `/at/room/<id>` canonical links so badge links land in their room.
 3. **Then:** upstream `badge.identity` (F) and the pocket gallery (G).
 
 See [FLOW.md](FLOW.md) for the visitor journey end to end.

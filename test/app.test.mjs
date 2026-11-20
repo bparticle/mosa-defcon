@@ -141,11 +141,10 @@ test('a thief held in the beam drops the work, and catching them all clears the 
   let peak = 0;
   for (const [n, id] of heist.entries()) {
     b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
-    // The empty frame tells you what was taken.
+    // The empty frame shows what was taken; SELECT there opens nothing.
     assert.equal(b.lua('return mosa_debug.near("missing")'), true, `an empty frame in ${id}`);
     await b.frames(2); await b.press('a');
-    assert.match(state(b), /scene=plaque/);
-    await b.press('b');
+    assert.match(state(b), /scene=game/);
     assert.equal(b.lua('return mosa_debug.face_thief()'), true, `a thief in ${id}`);
     for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) { await b.frames(1); peak = Math.max(peak, b.lastInstructions()); }
     assert.match(state(b), new RegExp(`scene=artcard .*left=${2 - n} `), `caught in ${id}`);

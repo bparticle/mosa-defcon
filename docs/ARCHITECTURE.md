@@ -25,7 +25,7 @@ The manifest asks for two permissions: `led` and `mesh`.
 
 | Module | Job |
 | --- | --- |
-| `main.lua` | Entry point and scenes (splash, title, game, art card, bottle card, plaque, QR, pause, art and bottle grids, map and travel, finale, lanyard, about), tonight's heist, LEDs, the Solana OS callbacks |
+| `main.lua` | Entry point and scenes (splash, title, game, art card, bottle card, QR, pause, art and bottle grids, map and travel, finale, lanyard, about), tonight's heist, LEDs, the Solana OS callbacks |
 | `story.lua` | The intro (the janitor's cupboard) and the briefing (security footage of a theft, then tonight's list), given what they need from `main.lua` |
 | `world.lua` | A room: grid laid out from synced rects, doors, landmarks, works on their walls or panels, bottles, the thief, and the flashlight renderer (lit runs per tile row, a faint memory pass) |
 | `light.lua` | The flashlight's shape: a cone and a pool as integer spans per scanline, and a point test |
@@ -48,7 +48,7 @@ the single QR object in step with the top scene.
 | --- | --- | --- |
 | `main.lua` | 64 KB | `pnpm build` fails above it. Currently ~53 KB; the data module (~76 KB: floorplans, the map, 75 works and 41 bottles as RLE) is a separate file |
 | Lua heap | 6 MB | Only the current room is laid out (`Room:suspend/resume`); thumbnails draw from RLE with no cache. The real emulator reports a peak of ~0.6 MB. A test fails above 640 KB on the host |
-| Instructions per callback | 200 000 | Room layout runs as a coroutine, up to four slices a tick behind a "threshold" screen. A slice is measured in cell lookups (`SLICE` in `world.lua`), not rows, so a wide room is paced like a narrow one; the tick a room opens (arriving plus its first draw) is the peak, ~87 000 in the 92-wide room1. The badge counts a coroutine's instructions against the tick that resumed it, and so does the test host. The flashlight draws runs of tile colour per scanline inside the cone, skips what it can't reach and draws identical scanline pairs once (peak ~52 000, in the lit Lobby). The title is static and repaints only when its art changes. The grids paint 12 thumbnails a tick. Canvas pixels cost 1 instruction per 16 |
+| Instructions per callback | 200 000 | Room layout runs as a coroutine, up to four slices a tick behind a "threshold" screen. A slice is measured in cell lookups (`SLICE` in `world.lua`), not rows, so a wide room is paced like a narrow one; the tick a room opens (arriving plus its first draw) is the peak, ~87 000 in the 92-wide room1. The badge counts a coroutine's instructions against the tick that resumed it, and so does the test host. The flashlight draws runs of tile colour per scanline inside the cone, skips what it can't reach and draws identical scanline pairs once; the beam's dithered fade is a list of 2x2 dots per d-pad direction, worked out once while the first room loads, so a frame only places them (peak ~85 000 walking, in the lit Lobby). An overlay (a card, the clipboard) draws only itself the tick it opens: the canvas still holds the walk beneath. The title is static and repaints only when its art changes. The grids paint 12 thumbnails a tick. Canvas pixels cost 1 instruction per 16 |
 | Storage | 16 KB | One key, `record`, ~250 bytes (bottles, rooms, stamps, works looked at, thieves caught) |
 | Mesh | 4 messages/s, 200 B as JSON | A presence every 2.5 s, ~30 B |
 | UI objects | 128 | One canvas and at most one QR |
@@ -59,7 +59,7 @@ count.
 ### Static scenes don't repaint
 
 The canvas keeps its pixels between ticks. Scenes marked `static` (title, cards,
-plaques, QR, pause, grids, map, finale, about, lanyard) draw once and then only when
+QR, pause, grids, map, finale, about, lanyard) draw once and then only when
 something changes (`dirty`: a button, a push or pop, a toast, a scene calling
 `invalidate()`). A badge in Lanyard mode spends almost no CPU, which saves
 battery when it's worn all day.

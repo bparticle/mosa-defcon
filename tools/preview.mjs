@@ -68,9 +68,8 @@ async function main() {
   const heist = String(b.lua('return mosa_debug.heist()')).split(',');
   b.lua(`mosa_debug.travel("${heist[0]}")`); await b.frames(70);
   if (b.lua('return mosa_debug.near("missing")') === true) {
-    await b.frames(2); await b.press('a');
+    await b.frames(2);
     await shot('09-empty-frame');
-    await b.press('b');
   }
   b.lua('mosa_debug.face_thief()'); await b.frames(8);
   await shot('10-thief-in-the-light');

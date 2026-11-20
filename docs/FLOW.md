@@ -34,14 +34,12 @@ flowchart TD
     CLEAR -->|QR| REPORT
     REC -->|QR| REPORT["mosa.center/at/defcon?shift=&lt;code&gt;"]
     LANY -->|QR| SITE["mosa.center/at/defcon"]
-    PLAQUE[Plaques: vitrine, boards,<br/>partner entrances] -->|QR| ROOMLINK["/at/&lt;partner&gt; · /at/bp26"]
   end
 
   subgraph Museum["4 · The museum, in full resolution"]
     PIECE --> LAND[Arrive in front of that find]
     SITE --> LAND2[Arrive with a DEF CON welcome]
     REPORT --> LAND3[Your night, read back<br/>commemorative collectible]
-    ROOMLINK --> LAND4[Arrive at that room or entrance]
     LAND --> MINT[Collect it on Solana]
     LAND3 --> MINT
   end
@@ -101,8 +99,6 @@ light, sized for a phone at arm's length:
 | A found bottle | `mosa.center/at/find/bottle/<piece>`, MOSA's canonical find link | **Yes**: lands in front of that find |
 | A work, up close | The work's own link from MOSA's hung-works data (its Mallow or 6529 page); else its room, else `/at/defcon` | **Yes**. Sirials open the museum: MOSA has no per-work link for them yet |
 | Lanyard, About | `mosa.center/at/defcon` | Needs a curated link in the console (Links → New): kind *room* or *entrance*, welcome copy. Until then it opens the Lobby as usual |
-| Partner entrance plaque | `mosa.center/at/<partner>` (e.g. `/at/cycol`) | **Yes** |
-| Janitor Room plaques | `mosa.center/at/bp26` | **Yes** |
 | Shift report | `mosa.center/at/defcon?shift=<code>` | Link works now; reading `shift` is the next museum change |
 
 Every URL the badge prints is checked at sync time with MOSA's own link

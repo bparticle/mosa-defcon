@@ -12,7 +12,7 @@ The badge never hand-copies museum content. `pnpm sync` derives everything:
 | --- | --- | --- |
 | Room floorplans | `apps/frontend/src/lib/rooms.generated.ts` → each room's `claims` (footprints), rasterised per room | Same source the museum's travel uses; a new room in `MOSA-ROOMS.blend` → `build:world` → `pnpm sync` → on the badge. No badge code change |
 | Doors | `portals` (both rooms' listings, deduped) and `warps` | A doorway is carried by both rooms (MOSA's `check:world` guarantees it) |
-| Landmarks | `vitrines`, `flapboards`, `postcardwalls`, `dispensers`, `vendors`, `entrances` | New furniture kinds need a plaque text in `src/main.lua` (`PLAQUES`); unknown kinds still show, with a generic plaque |
+| Landmarks | `vitrines`, `flapboards`, `postcardwalls`, `dispensers`, `vendors`, `entrances` | Furniture you walk around, in the light; nothing to read. Any kind works with no badge change |
 | Room stamps | `apps/frontend/public/rooms/<id>.programme.json` goals | The badge awards `visit` and `discover-room` (a room behind one stays off the museum map until found). Other goal types are logged by the sync and skipped, never approximated |
 | Museum map | The room claim volumes, which share one world space | Scaled to the map screen and cropped; each room's rects and centre |
 | Works | `apps/frontend/src/lib/communityArt.ts` `HUNG_WORKS`, `sirialPins.generated.ts` `SIRIAL_PINS`, titles from `sirials.provenance.generated.ts` | Title, artist, link; images pixelized to at most 24×24 in 7 flat colours (4 for ink drawings). A work's own https link is its QR, else its room's. `registry.works` is append-only like the others |
@@ -83,7 +83,7 @@ Built in `bparticle/mosa` (migration 078, `apps/frontend/docs/BADGE-SHIFT.md`):
 
 `room` is already a reserved word in `linkPaths.ts`. Adding the family (mirrored
 byte for byte in `apps/api` and `apps/frontend`, both pinned by their tests)
-lets every badge plaque land in its own room instead of the generic link. The
+lets every badge link land in its own room instead of the generic link. The
 sync would then emit `/at/room/<id>` for rooms without a curated link, still
 validated by `parseLinkPath`.
 

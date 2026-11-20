@@ -78,7 +78,7 @@ None of them predict the ESP32-C5's speed. Test on a real badge before an event.
 | | |
 | --- | --- |
 | D-pad | Walk; move through menus |
-| SELECT | Look at a work up close; read a plaque or an empty frame's label; choose |
+| SELECT | Look at a work up close; choose |
 | CANCEL | Clipboard (pause): map and travel, the art, bottles, wave, clock out. On the title: leave the app |
 
 The flashlight points where you walk. Hold it on a thief for a moment and
