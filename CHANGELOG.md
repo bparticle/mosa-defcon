@@ -5,6 +5,42 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-20
+
+The night: a clock to dawn, a desk that keeps sending work, and a reason to come back tomorrow.
+
+### Added
+
+- The night has a clock: the shift runs from 23:41 to dawn, about eight
+  minutes of play, and stops while the clipboard is up. Hours chime; 05:00
+  warns that the thieves leave with the light.
+- The security desk keeps the night going. Clear a break-in and it's "ALL
+  CLEAR, FOR NOW"; after a calm the desk radios the next wave. Its size and
+  pace follow how quickly you cleared the last one: quick janitors meet more
+  thieves, struggling ones get a breather. A thief gone unseen too long is
+  reported again.
+- Dawn: at 06:00 (or when you clock out) the lights come up on the night's
+  report: works back and lost, new finds, your nights and streak, !LAMPs
+  earned, and what's still out there to find.
+- A new night every day, the same first break-in for every janitor that
+  day, with a streak for consecutive nights. The title's desk board says
+  whether tonight is still to work.
+- !LAMPs: 3 for each work recovered, 10 for a clean night, 5 for the first
+  shift of a streak of three or more (for owners who linked X; within the
+  daily cap the organisers set).
+- The desk's evening call: after a first dawn, Night Shift asks to run in
+  the background and sends one notification an evening when tonight hasn't
+  been worked. New permissions: `lamps` and `background`.
+- HOW TO PLAY on the title: five pages on the night, the light, the desk,
+  travel and coming back.
+
+### Changed
+
+- Travel costs time: the map takes you only to rooms you've walked, and each
+  trip costs twenty minutes of the night. Doors are free.
+- The "ALL CLEAR" finale is gone: catching the third thief no longer ends
+  the shift. The dawn report takes its place.
+
 ## [0.5.0] - 2026-11-20
 
 The beam: a flashlight that fades into the dark, and nothing to read in the rooms.
@@ -199,7 +235,8 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.5.0...HEAD
+[Unreleased]: ../../compare/v0.6.0...HEAD
+[0.6.0]: ../../compare/v0.5.0...v0.6.0
 [0.5.0]: ../../compare/v0.4.2...v0.5.0
 [0.4.2]: ../../compare/v0.4.1...v0.4.2
 [0.4.1]: ../../compare/v0.4.0...v0.4.1
