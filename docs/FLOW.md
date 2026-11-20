@@ -61,10 +61,11 @@ The App Store installs **one app package**, so the whole app (code, floorplans,
 
 ## 2. Play
 
-- **Clock in.** 23:58, the janitor's cupboard. The janitor takes the
-  flashlight off its hook and clicks it on; the bulb goes out. The curator's
-  note lists tonight's rounds: three works are off their walls, in three
-  rooms, the first one door from the Lobby.
+- **Clock in.** On a first shift: 23:58, the janitor's cupboard. The janitor
+  takes the flashlight off its hook and clicks it on; the bulb goes out.
+  Every shift: security-camera footage of a thief lifting a work off its
+  wall and running, then tonight's list: the three stolen works, as pixel
+  art, and the rooms they were taken from, the first one door from the Lobby.
 - **Rounds.** The flashlight is one hard cone ahead and a small pool at your
   feet; everything else is dark, with a faint memory of what you've seen.
   Exits glow.
@@ -72,8 +73,12 @@ The App Store installs **one app package**, so the whole app (code, floorplans,
   shows it up close, with its title, artist and room, and **SEE IT IN HD**
   shows the QR to the real work. Everything you've looked at is in THE ART.
 - **Catch.** Thieves creep about in the dark. An empty frame tells you what
-  was taken. Hold the light on a thief and they drop the work and bolt; the
-  LEDs sweep as you close in, and the museum map blinks the rooms they're in.
+  was taken. Hold the light on a thief and a bar over their head fills until
+  they drop the work. Dazzled, or hearing you close by in the dark (a "!"),
+  they run for a door; reach it and they're away into the next room. The
+  LEDs sweep as you close in, and the map blinks the rooms they're in.
+- **Travel.** On the clipboard's map, SELECT on any room and the light
+  closes in and opens there, like the HD museum's travel.
   Catch all three and the lights come up: **ALL CLEAR**, the night's tally,
   and the shift report one scan away.
 - **Sweep.** Bottles from the live MOSA Bottles collection lie on the HD

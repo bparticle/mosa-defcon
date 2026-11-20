@@ -25,7 +25,8 @@ The manifest asks for two permissions: `led` and `mesh`.
 
 | Module | Job |
 | --- | --- |
-| `main.lua` | Entry point and scenes (splash, title, intro, briefing, game, art card, bottle card, plaque, QR, pause, art and bottle grids, museum map, finale, lanyard, about), tonight's heist, LEDs, the Solana OS callbacks |
+| `main.lua` | Entry point and scenes (splash, title, game, art card, bottle card, plaque, QR, pause, art and bottle grids, map and travel, finale, lanyard, about), tonight's heist, LEDs, the Solana OS callbacks |
+| `story.lua` | The intro (the janitor's cupboard) and the briefing (security footage of a theft, then tonight's list), given what they need from `main.lua` |
 | `world.lua` | A room: grid laid out from synced rects, doors, landmarks, works on their walls or panels, bottles, the thief, and the flashlight renderer (lit runs per tile row, a faint memory pass) |
 | `light.lua` | The flashlight's shape: a cone and a pool as integer spans per scanline, and a point test |
 | `sprites.lua` | The janitor and the thieves, 10×16 in four directions with a walk cycle, drawn as runs |
@@ -45,7 +46,7 @@ the single QR object in step with the top scene.
 
 | Limit | Value | How we stay inside |
 | --- | --- | --- |
-| `main.lua` | 64 KB | `pnpm build` fails above it. Currently ~55 KB; the data module (~76 KB: floorplans, the map, 75 works and 41 bottles as RLE) is a separate file |
+| `main.lua` | 64 KB | `pnpm build` fails above it. Currently ~53 KB; the data module (~76 KB: floorplans, the map, 75 works and 41 bottles as RLE) is a separate file |
 | Lua heap | 6 MB | Only the current room is laid out (`Room:suspend/resume`); thumbnails draw from RLE with no cache. The real emulator reports a peak of ~0.6 MB. A test fails above 640 KB on the host |
 | Instructions per callback | 200 000 | Room layout runs as a coroutine, up to four slices a tick behind a "threshold" screen (peak ~36 000). The flashlight draws runs of tile colour per scanline inside the cone, skips what it can't reach and draws identical scanline pairs once (peak ~52 000, in the lit Lobby). The title is static and repaints only when its art changes. The grids paint 12 thumbnails a tick. Canvas pixels cost 1 instruction per 16 |
 | Storage | 16 KB | One key, `record`, ~250 bytes (bottles, rooms, stamps, works looked at, thieves caught) |

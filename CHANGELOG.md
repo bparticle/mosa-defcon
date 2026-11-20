@@ -5,6 +5,32 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+### Added
+- **The footage.** The briefing is now security-camera footage instead of a
+  page of text: a work hangs in a pool of light, a thief creeps in, lifts it,
+  glances at the camera and runs. Then tonight's list: the stolen works
+  themselves, as pixel art, with the room each was taken from. SELECT
+  fast-forwards the tape; the next press starts the shift.
+- **Travel.** SELECT on any room on the map (MAP AND TRAVEL on the
+  clipboard) and the light closes in on the janitor and opens in that room,
+  like the HD museum's travel.
+- **Thieves run.** Dazzled, or hearing you close by in the dark, a thief
+  makes for the nearest door away from you, with a "!" over their head. Reach
+  it and they're away into the next room, work and all; the map shows where
+  they went. A bar over a thief in the light fills until they give up.
+- A beat after a catch: the thief scatters before the work's card comes up.
+- A first shift shows the controls along the bottom for its first seconds.
+
+### Changed
+- The cupboard intro plays on the first shift only; after that CLOCK IN goes
+  straight to the footage.
+- Toasts are a slip of paper along the bottom, out of the way of the walk,
+  and a room's visit stamp sits beside its name instead of covering the
+  screen. The room's name has a dark plate, so it reads over a lit wall.
+- Exits are chevrons pointing through the doorway, shown for the doors near
+  you, instead of dashes scattered across the dark.
+- Holding a thief in the light takes a little longer (1.1 s).
+
 ## [0.3.0] - 2026-11-20
 
 The Rounds: a story, the real art, and a flashlight you can feel.

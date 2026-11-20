@@ -45,6 +45,8 @@ async function main() {
   await shot('02-intro-cupboard');
   await b.frames(90);
   await shot('03-intro-flashlight');
+  await b.press('a'); await b.frames(70);
+  await shot('04-the-footage');
   await b.press('a'); await b.frames(2);
   await shot('04-briefing');
   await b.press('a'); await b.frames(10);
@@ -72,7 +74,7 @@ async function main() {
   }
   b.lua('mosa_debug.face_thief()'); await b.frames(8);
   await shot('10-thief-in-the-light');
-  for (let i = 0; i < 60 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+  for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
   await shot('11-recovered');
   await b.press('b');
 
@@ -86,7 +88,9 @@ async function main() {
   await b.press('b');
   await shot('14-clipboard');
   await b.press('down'); await b.press('a'); await b.frames(2);
+  await b.press('right'); await b.frames(2);
   await shot('15-museum-map');
+  await b.press('left'); await b.frames(2);
   await b.press('b');
   await b.press('down'); await b.press('a'); await b.frames(10);
   await shot('16-the-art');
@@ -102,7 +106,7 @@ async function main() {
   for (const id of heist.slice(1)) {
     b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
     b.lua('mosa_debug.face_thief()');
-    for (let i = 0; i < 60 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+    for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
     await b.press('b'); await b.frames(2);
   }
   await b.frames(100);
@@ -111,6 +115,13 @@ async function main() {
 
   b.meshIn('7K2Q9M', { w: '@pixeljanitor' }); await b.frames(3);
   await shot('20-wave-received');
+
+  // Travel: SELECT on a room on the map, and the light closes in.
+  await b.frames(100);
+  await b.press('b'); await b.press('down'); await b.press('a'); await b.frames(2);
+  await b.press('right'); await b.press('a');
+  await shot('22-teleport');
+  await b.frames(40);
 
   const t = await bootApp();
   for (let i = 0; i < 3; i++) await t.press('down');

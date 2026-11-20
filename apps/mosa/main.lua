@@ -11,7 +11,7 @@ local util = require("util")
 local ui = require("kit")
 local world = require("world")
 local sprites = require("sprites")
-local light = require("light")
+local story = require("story")
 local record = require("record")
 local net = require("net")
 local DATA = require("data.mosa_data")
@@ -60,7 +60,7 @@ local function pop()
 end
 
 local function say(text, sub, seconds)
-  toast = { text = text, sub = sub, til = t + (seconds or 2.6) }
+  toast = { text = text, sub = sub, til = t + (seconds or 2.6), t0 = t }
   dirty = true
 end
 
@@ -147,7 +147,7 @@ local function plan_heist()
   local function take(pick)
     for i, o in ipairs(options) do if o == pick then table.remove(options, i); break end end
     local art = pick.room.art
-    plan[#plan + 1] = { room = pick.room.id, work = art[rng:int(#art)].w }
+    plan[#plan + 1] = { room = pick.room.id, home = pick.room.id, work = art[rng:int(#art)].w }
   end
   local close = {}
   for _, o in ipairs(options) do if o.near then close[#close + 1] = o end end
@@ -159,6 +159,8 @@ end
 -- ── scenes ───────────────────────────────────────────────────────────────────
 
 local Splash, Title, Lanyard, Intro, Briefing, Game, Pause, Card, ArtCard, Plaque, Code, Grid, Map, Finale, About
+Intro, Briefing = story.scenes({ top = top, push = push, pop = pop, flash = flash, plan_heist = plan_heist,
+  works_by_idx = works_by_idx, rooms_by_id = rooms_by_id, start = function(plan) push(Game.new(plan)) end })
 
 -- A menu helper: items = { { label, fn }, ... }. Numbered like a catalogue;
 -- the selected line is an inverted block of paper.
@@ -236,7 +238,7 @@ end
 Title = { sel = 1, art = 1, art_t = 0, name = "title", static = true }
 function Title:enter()
   self.items = {
-    { "CLOCK IN", function() push(Intro.new()) end },
+    { "CLOCK IN", function() push(record.state.shifts > 0 and Briefing.new(plan_heist()) or Intro.new()) end },
     { "THE ART", function() push(Grid.new("art")) end },
     { "BOTTLES", function() push(Grid.new("bottles")) end },
     { "LANYARD", function() push(Lanyard) end },
@@ -336,134 +338,6 @@ local function hd_code(w)
   return Code.new(w.url, "SEE IT IN HD", w.title, "by " .. w.artist .. ". On " .. w.via .. ".")
 end
 
--- ── the intro: the janitor's cupboard ───────────────────────────────────────
--- The janitor walks in, takes the flashlight off its hook, and clicks it on.
--- The bulb goes out and the night begins. Any button skips it.
-Intro = { name = "intro" }
-Intro.__index = Intro
-function Intro.new() return setmetatable({ t = 0 }, Intro) end
-local WALK_IN, TURN, TAKE, CLICK, DONE = 1.5, 1.7, 2.3, 2.9, 6.2
-local HOOK_X, FLOOR_Y = 190, 178
-function Intro:update(dt)
-  local before = self.t
-  self.t = self.t + dt
-  if before < CLICK and self.t >= CLICK then flash(sprites.LENS, 0.25) end
-  if self.t >= DONE then self:button() end
-end
--- After the click: only what the beam touches, the wall and floor pale in it.
-local BEAM_WALL, BEAM_MARK, BEAM_FLOOR = g.color(168, 164, 156), g.color(140, 137, 130), g.color(104, 100, 94)
-function Intro:dark(T, jx, lx, ly)
-  local a = math.sin((T - CLICK) * 1.3) * 0.2
-  local L = light.new(lx + 16, ly + 3, math.cos(a), math.sin(a), 240, 0.3, jx, FLOOR_Y - 22, 36)
-  for y = math.max(0, L.top), math.min(ui.H - 1, L.bottom) do
-    local a1, b1, a2, b2 = light.row(L, y)
-    local col = y < FLOOR_Y - 20 and ((y % 7 == 6) and BEAM_MARK or BEAM_WALL) or BEAM_FLOOR
-    if a1 then g.fill_rect(a1, y, b1 - a1 + 1, 1, col) end
-    if a2 then g.fill_rect(a2, y, b2 - a2 + 1, 1, col) end
-  end
-  if light.lit(L, 262, 140) then
-    g.line(268, 66, 262, 150, ui.PAPER_INK)
-    g.fill_rect(250, 140, 26, 18, g.color(58, 56, 52))
-  end
-  if light.lit(L, 160, 51) then
-    g.fill_rect(118, 44, 84, 14, ui.PAPER)
-    ui.tracked("STAFF ONLY", 124, 47, ui.PAPER_INK, 1, 2)
-  end
-end
-
-function Intro:draw()
-  local T = self.t
-  g.clear(ui.BG)
-  local x = math.min(1, T / WALK_IN)
-  local jx = math.floor(-20 + (HOOK_X - 10 + 20) * x)
-  local lx, ly = jx + 12, FLOOR_Y - 18
-  if T >= CLICK then
-    self:dark(T, jx, lx, ly)
-    sprites.draw("janitor", "right", 0, jx, FLOOR_Y, 3)
-    g.fill_rect(lx, ly, 14, 6, sprites.TORCH)
-    g.fill_rect(lx + 14, ly - 1, 3, 8, sprites.LENS)
-    if T > CLICK + 0.8 then ui.tracked("23:58. THE MUSEUM IS CLOSED.", 16, 192, ui.MUTED, 1, 1) end
-    if T > CLICK + 1.8 then ui.tracked("BUT IT IS NOT EMPTY.", 16, 204, ui.INK, 1, 1) end
-    return
-  end
-  -- The cupboard: a concrete wall, a lino floor, a bulb, a locker, a mop.
-  ui.concrete(0, 0, ui.W, FLOOR_Y - 20)
-  g.fill_rect(0, FLOOR_Y - 20, ui.W, ui.H - FLOOR_Y + 20, g.color(26, 25, 24))
-  for x = 0, ui.W, 24 do g.line(x, FLOOR_Y - 20, x - 30, ui.H, g.color(34, 33, 31)) end
-  g.fill_rect(0, FLOOR_Y - 21, ui.W, 2, ui.SHADOW)
-  g.line(160, 0, 160, 18, ui.DIM)
-  g.fill_circle(160, 23, 5, T < CLICK and g.color(255, 244, 210) or ui.DIM)
-  ui.slab(28, 58, 44, 100, ui.DIM, 3)
-  for y = 66, 84, 4 do g.line(36, y, 64, y, ui.CONC) end
-  g.fill_rect(64, 104, 3, 10, ui.MUTED)
-  g.line(268, 66, 262, 150, ui.MUTED)
-  g.fill_rect(250, 140, 26, 18, g.color(74, 72, 68))
-  g.fill_rect(252, 136, 22, 4, g.color(96, 94, 88))
-  -- A plate on the wall, and the hook with the flashlight on it.
-  g.fill_rect(118, 44, 84, 14, ui.PAPER)
-  ui.tracked("STAFF ONLY", 124, 47, ui.PAPER_INK, 1, 2)
-  g.fill_rect(HOOK_X - 2, 92, 5, 3, ui.MUTED)
-  if T < TAKE then
-    g.fill_rect(HOOK_X - 3, 95, 7, 20, sprites.TORCH)
-    g.fill_rect(HOOK_X - 4, 115, 9, 4, sprites.TORCH)
-    g.fill_rect(HOOK_X - 3, 119, 7, 2, sprites.LENS)
-  end
-  -- The janitor: in, up to the hook, and the flashlight comes down.
-  local face, step = "right", 0
-  if T < WALK_IN then step = (math.floor(T * 6) % 2 == 0) and 1 or 0
-  elseif T < TAKE then face = "up" end
-  sprites.draw("janitor", face, step, jx, FLOOR_Y, 3)
-  if T >= TAKE then
-    g.fill_rect(lx, ly, 14, 6, sprites.TORCH)
-    g.fill_rect(lx + 14, ly - 1, 3, 8, ui.MUTED)
-  elseif T >= TURN then
-    -- Reaching up for it.
-    g.fill_rect(jx + 6, FLOOR_Y - 66, 6, 22, g.color(216, 212, 202))
-    g.fill_rect(jx + 6, FLOOR_Y - 72, 6, 6, g.color(226, 182, 142))
-  end
-  if T < 0.6 then ui.tracked_center("NIGHT SHIFT", 160, 200, ui.INK, 1, 3) end
-end
-function Intro:button()
-  if top() ~= self then return end
-  pop()
-  push(Briefing.new(plan_heist()))
-end
-
--- ── the briefing: tonight's assignment, on the curator's notepaper ─────────
-Briefing = { name = "briefing", static = true }
-Briefing.__index = Briefing
-function Briefing.new(plan) return setmetatable({ plan = plan }, Briefing) end
-function Briefing:draw()
-  g.clear(ui.BG)
-  ui.slab(20, 6, 280, 202)
-  g.fill_rect(20, 6, 280, 14, ui.PAPER_INK)
-  ui.tracked("TONIGHT'S ROUNDS", 28, 9, ui.PAPER, 1, 2)
-  g.text_right("FROM THE CURATOR", 292, 9, ui.MUTED)
-  local n = #self.plan
-  local y = 30
-  if n == 0 then
-    y = y + ui.paragraph("A quiet night. Walk the rooms, look at the works on their walls, and pick up any bottles left lying about.", 32, y, 256, ui.PAPER_INK, 1, 11)
-  else
-    y = y + ui.paragraph("Someone got in after closing. " .. (n == 1 and "One work is" or (n == 2 and "Two works are" or plural(n, "work") .. " are")) .. " off the walls.", 32, y, 256, ui.PAPER_INK, 1, 11) + 4
-    y = y + ui.paragraph("Find the thieves in the dark and hold your flashlight on them. Dazzled, they drop the art.", 32, y, 256, ui.PAPER_INK, 1, 11) + 6
-    ui.tracked("SEEN IN", 32, y, ui.MUTED, 1, 2)
-    y = y + 12
-    for _, h in ipairs(self.plan) do
-      g.fill_rect(34, y + 2, 3, 3, ui.PAPER_INK)
-      ui.tracked(room_name(h.room):upper(), 44, y, ui.PAPER_INK, 1, 2)
-      y = y + 11
-    end
-  end
-  y = math.max(y + 6, 150)
-  g.fill_rect(32, y - 4, 256, 1, ui.MUTED)
-  g.text("D-PAD walk   " .. ui.label("a") .. " look   " .. ui.label("b") .. " clipboard", 32, y + 2, ui.MUTED)
-  ui.hints({ "a", "start the shift", "b", "not tonight" }, 188, ui.MUTED, true)
-end
-function Briefing:button(key)
-  if key == "a" then local plan = self.plan; pop(); push(Game.new(plan))
-  elseif key == "b" then pop() end
-end
-
 -- ── the janitor's walk ──────────────────────────────────────────────────────
 Game = { name = "game" }
 Game.__index = Game
@@ -471,10 +345,13 @@ function Game.new(plan)
   local s = setmetatable({ built = {}, fx = 0, fy = -1, armed = false, step = 0, heist = {}, plan = plan or {},
     caught = 0, tonight = { seen = 0, bottles = 0 } }, Game)
   for _, h in ipairs(s.plan) do s.heist[h.room] = h.work end
+  s.ok = function(to) return s:open_to(to) end
   return s
 end
 
 function Game:enter()
+  -- A first shift gets the controls along the bottom for its first seconds.
+  if record.state.shifts == 0 then self.tips = t + 10 end
   record.clock_in()
   self:travel(DATA.start, nil)
 end
@@ -487,11 +364,19 @@ end
 
 function Game:thieves_left() return #self.plan - self.caught end
 
-function Game:stamp(room_id, goal)
+function Game:stamp(room_id, goal, quiet)
   if record.stamp(room_id, goal.id) then
-    say("STAMPED  " .. goal.name:upper(), goal.text, 3.2)
+    if quiet then self.stamped = true else say("STAMPED  " .. goal.name:upper(), goal.text, 3.2) end
     flash(ui.ACCENT, 0.8)
   end
+end
+
+--- Teleport, as in the HD museum: the light closes in, and opens on the other room.
+local IRIS = 0.32
+function Game:warp(to)
+  if not self.room or to == self.room.data.id then return end
+  self.iris = { out = true, t0 = t, to = to }
+  toast = nil
 end
 
 --- Start walking through a door. The room is laid out over the next few
@@ -530,10 +415,12 @@ function Game:step_loading()
 end
 
 function Game:arrive(data)
-  self.banner = t + 2.8
+  self.banner, self.stamped = t + 2.8, false
+  self.iris = { t0 = t, warped = self.iris and self.iris.warped }
+  if self.iris.warped then flash(ui.ACCENT, 0.5) end
   record.visit(data)
   for _, goal in ipairs(data.goals or {}) do
-    if goal.type == "visit" then self:stamp(data.id, goal) end
+    if goal.type == "visit" then self:stamp(data.id, goal, true) end
   end
   -- "Discover" goals belong to the room that hides the other one.
   for _, other in ipairs(DATA.rooms) do
@@ -543,20 +430,43 @@ function Game:arrive(data)
   end
   local th = self.room.thief
   if th and not th.gone and not th.caught then
-    say("SOMEONE IS IN HERE", "Sweep the dark with your light.", 3.2)
+    say("SOMEONE IS IN HERE", "Sweep the dark with your light.", 2.6)
   end
+end
+
+--- A thief got away through a door, into the next room: the hunt moves.
+function Game:fled(door)
+  local room = self.room
+  local th = room.thief
+  local to = door.to
+  self.heist[room.data.id], self.heist[to] = nil, th.work.idx
+  for _, h in ipairs(self.plan) do if h.work == th.work.idx then h.room = to end end
+  if self.built[to] then self.built[to]:let_in(th.work, room.data.id) end
+  if th.seen then say("THEY GOT AWAY", "Into " .. room_name(to) .. ". Go after them.", 3)
+  else say("FOOTSTEPS", "Someone ran into " .. room_name(to) .. ".", 3) end
+  flash(th.work.tint, 0.6)
+end
+
+--- Can a fleeing thief run into room `to`? Not into one with a thief already,
+--- nor one off the map.
+function Game:open_to(to)
+  local r = rooms_by_id[to]
+  return r and not r.hidden and not self.heist[to]
 end
 
 --- A thief gave up: the work goes back on its wall.
 function Game:recovered(work)
-  for _, a in ipairs(self.room.art) do if a.work == work then a.missing = false end end
+  local home
+  for _, h in ipairs(self.plan) do if h.work == work.idx then home = h.home end end
+  for _, a in ipairs((self.built[home] or self.room).art) do if a.work == work then a.missing = false end end
   self.heist[self.room.data.id] = nil
   self.caught = self.caught + 1
   record.catch()
   if record.see(work) then self.tonight.seen = self.tonight.seen + 1 end
   flash(work.tint, 1.4)
   if self:thieves_left() == 0 then self.all_clear = true end
-  push(ArtCard.new(work, "recovered", self.room.data))
+  -- A beat to watch them go before the card comes up.
+  self.catching = { work = work, til = t + 0.7 }
 end
 
 function Game:update(dt)
@@ -569,6 +479,19 @@ function Game:update(dt)
   end
   if not ready then return end
   local room = self.room
+  if self.iris and self.iris.out then
+    if t - self.iris.t0 >= IRIS then self:travel(self.iris.to, nil); self.iris = { warped = true } end
+    return
+  end
+  if self.catching then
+    room:update_thief(dt, self.px, self.py, false, rng)
+    if t >= self.catching.til then
+      local work = self.catching.work
+      self.catching = nil
+      push(ArtCard.new(work, "recovered", room.data))
+    end
+    return
+  end
   local mx, my = 0, 0
   if held.left then mx = mx - 1 end
   if held.right then mx = mx + 1 end
@@ -599,9 +522,12 @@ function Game:update(dt)
     self.coached = true
     say("HOLD THE LIGHT ON THEM", "Keep them in the beam.", 2.4)
   end
-  if room:update_thief(dt, self.px, self.py, lit, rng) == "caught" then
+  local what, door = room:update_thief(dt, self.px, self.py, lit, rng, self.ok)
+  if what == "caught" then
     self:recovered(room.thief.work)
     return
+  elseif what == "fled" then
+    self:fled(door)
   end
 
   -- Bottles are picked up by walking into them.
@@ -622,6 +548,27 @@ function Game:update(dt)
   net.update(room.data.id, record.found_count())
 end
 
+-- The iris: everything outside a circle round the janitor goes dark. A
+-- teleport rings it in the crosshair green.
+local function iris(cx, cy, r, ring)
+  local BG, W = ui.BG, ui.W
+  for y = 0, ui.H - 1, 2 do
+    local dy = y + 1 - cy
+    if dy * dy >= r * r then g.fill_rect(0, y, W, 2, BG)
+    else
+      local dx = math.floor(math.sqrt(r * r - dy * dy))
+      if cx - dx > 0 then g.fill_rect(0, y, cx - dx, 2, BG) end
+      if cx + dx < W then g.fill_rect(cx + dx, y, W - cx - dx, 2, BG) end
+    end
+  end
+  if ring and r > 2 then
+    for i = 0, 23 do
+      local a = i * 0.2618
+      g.fill_rect(cx + math.floor(math.cos(a) * r), cy + math.floor(math.sin(a) * r), 2, 2, ui.ACCENT)
+    end
+  end
+end
+
 function Game:draw()
   local room = self.room
   g.clear(ui.BG)
@@ -638,10 +585,29 @@ function Game:draw()
     stride = k == 1 and 1 or (k == 3 and 2 or 0)
   end
   self.L, self.cx, self.cy = room:draw(self.px, self.py, self.fx, self.fy, t, stride)
+  local ir = self.iris
+  if ir and ir.t0 then
+    local k = math.min(1, (t - ir.t0) / IRIS)
+    if not ir.out and k >= 1 then self.iris = nil
+    else
+      local TILE = world.TILE
+      iris(math.floor(self.px * TILE) - self.cx, math.floor(self.py * TILE) - self.cy - 8,
+        math.floor(280 * (ir.out and (1 - k) * (1 - k) or k * k)), ir.out or ir.warped)
+    end
+  end
   if top() ~= self then return end
   if self.banner and t < self.banner then
-    ui.tracked(room.data.name:upper(), 10, 10, ui.INK, 1, 3)
+    local name = room.data.name:upper()
+    local bw = ui.tracked_width(name, 1, 3) + (self.stamped and 78 or 14)
+    g.fill_rect(4, 4, bw, 19, ui.BG)
+    ui.tracked(name, 10, 10, ui.INK, 1, 3)
+    if self.stamped then
+      local x = 18 + ui.tracked_width(name, 1, 3)
+      g.rect(x, 6, 56, 15, ui.INK); g.rect(x + 1, 7, 54, 13, ui.INK)
+      ui.tracked("STAMPED", x + 5, 10, ui.INK, 1, 1)
+    end
   end
+  if self.tips and t < self.tips then ui.hints({ "d-pad", "walk", "a", "look", "b", "clipboard" }); return end
   local hint
   local a = room:art_near(self.px, self.py)
   if a then hint = { "a", a.missing and "empty frame" or "look" }
@@ -657,7 +623,7 @@ function Game:draw()
 end
 
 function Game:button(key)
-  if not self.room then return end
+  if not self.room or (self.iris and self.iris.out) or self.catching then return end
   if key == "b" then push(Pause.new(self))
   elseif key == "a" then
     local a = self.room:art_near(self.px, self.py)
@@ -802,7 +768,7 @@ function Pause.new(game)
   local s = setmetatable({ game = game, sel = 1 }, Pause)
   s.items = {
     { "BACK TO WORK", function() pop() end },
-    { "MUSEUM MAP", function() push(Map.new(game)) end },
+    { "MAP AND TRAVEL", function() push(Map.new(game)) end },
     { "THE ART", function() push(Grid.new("art")) end },
     { "BOTTLES", function() push(Grid.new("bottles")) end },
     { "WAVE", function()
@@ -1047,10 +1013,18 @@ function Map:draw()
     line = n .. " of " .. plural(#sel.art, "work") .. " looked at."
   else line = "No works hang here." end
   g.text_right(line, 310, y, ui.MUTED)
-  ui.hints({ "b", "back" }, 204)
+  if game and game.room and sel.id == here then ui.hints({ "b", "back" }, 204)
+  elseif game then ui.hints({ "a", "travel here", "b", "back" }, 204)
+  else ui.hints({ "b", "back" }, 204) end
 end
 function Map:button(key)
-  if key == "b" then pop()
+  local game, sel = self.game, self.rooms[self.sel]
+  if key == "a" and game and game.room and sel and sel.id ~= game.room.data.id then
+    -- Like the HD museum's travel: any room on the map, in a blink.
+    pop()
+    if getmetatable(top()) == Pause then pop() end
+    game:warp(sel.id)
+  elseif key == "b" then pop()
   elseif key == "left" or key == "up" then self.sel = (self.sel - 2) % #self.rooms + 1
   elseif key == "right" or key == "down" then self.sel = self.sel % #self.rooms + 1 end
 end
@@ -1220,15 +1194,17 @@ local function draw()
   -- A toast never covers a QR code, a card or a list: it waits for the walk.
   local s = top()
   if toast and (getmetatable(s) == Game or s == Title) then
-    -- A toast is a rubber stamp: paper, a double rule, a hard shadow.
-    local h = toast.sub and 34 or 22
+    -- A toast is a paper slip along the bottom, out of the way of the walk:
+    -- it slides up, says its piece, and goes.
+    local h = toast.sub and 28 or 18
     local sub = toast.sub and ui.fit(toast.sub, 290)
-    local w = math.max(ui.tracked_width(toast.text, 1, 2), sub and #sub * 6 or 0) + 24
-    local x, y = (ui.W - w) // 2, 176 - h
-    ui.slab(x, y, w, h, ui.PAPER, 3)
-    g.rect(x + 2, y + 2, w - 4, h - 4, ui.PAPER_INK); g.rect(x + 4, y + 4, w - 8, h - 8, ui.PAPER_INK)
-    ui.tracked_center(toast.text, 160, y + 8, ui.PAPER_INK, 1, 2)
-    if sub then g.text_center(sub, 160, y + 20, ui.MUTED) end
+    local w = math.max(ui.tracked_width(toast.text, 1, 2), sub and #sub * 6 or 0) + 16
+    local x = (ui.W - w) // 2
+    local y = ui.HINTS_Y - 6 - h + math.max(0, math.floor((0.12 - (t - (toast.t0 or 0))) * 160))
+    ui.slab(x, y, w, h, ui.PAPER, 2)
+    g.fill_rect(x, y, 3, h, ui.PAPER_INK)
+    ui.tracked_center(toast.text, 160 + 1, y + 5, ui.PAPER_INK, 1, 2)
+    if sub then g.text_center(sub, 160 + 1, y + 16, ui.MUTED) end
   end
   -- The QR code belongs to the top scene; Solana OS draws it over the canvas.
   local spec = s.qr and s:qr() or nil
@@ -1338,7 +1314,7 @@ mosa_debug = {
         gm.px, gm.py = x, y
         local l = math.sqrt(d[1] * d[1] + d[2] * d[2])
         gm.fx, gm.fy = -d[1] / l, -d[2] / l
-        th.turn, th.fx, th.fy = 99, 0, 0
+        th.turn, th.fx, th.fy, th.stay = 99, 0, 0, true
         return true
       end
     end

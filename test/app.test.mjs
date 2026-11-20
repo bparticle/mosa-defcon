@@ -16,10 +16,12 @@ const state = (b) => String(b.lua('return mosa_debug.state()'));
 const ROOMS = lock.registry.rooms;
 const BUDGET = 200000;
 
-// CLOCK IN, past the intro and the curator's note, into the first room.
+// CLOCK IN, past the intro (a first shift only) and tonight's footage, into the first room.
 async function clockIn(b) {
-  await b.press('a'); await b.frames(2); // CLOCK IN: the intro
-  await b.press('a'); await b.frames(2); // skip it: tonight's rounds
+  await b.press('a'); await b.frames(2); // CLOCK IN
+  if (/scene=intro/.test(state(b))) { await b.press('a'); await b.frames(2); } // skip the cupboard
+  assert.match(state(b), /scene=briefing/);
+  await b.press('a'); await b.frames(2); // fast-forward the tape to tonight's list
   assert.match(state(b), /scene=briefing/);
   await b.press('a'); await b.frames(10); // start the shift
   assert.match(state(b), /scene=game/);
@@ -59,6 +61,11 @@ test('the shift starts in a cupboard, with a flashlight and a curator\'s note', 
   assert.match(state(b), /scene=intro/);
   await b.frames(220); // the whole intro plays out by itself
   assert.match(state(b), /scene=briefing/);
+  // The footage plays out: a thief lifts a work and runs, then tonight's list.
+  let peak = 0;
+  for (let i = 0; i < 180; i++) { await b.frames(1); peak = Math.max(peak, b.lastInstructions()); }
+  assert.ok(peak < BUDGET / 2, `briefing peak tick ${peak}`);
+  assert.match(state(b), /scene=briefing/, 'the briefing waits for the janitor');
   await b.press('b');
   assert.match(state(b), /scene=title/, 'CANCEL on the note goes back to the front door');
   assert.deepEqual(b.errors, []);
@@ -131,7 +138,7 @@ test('a thief held in the beam drops the work, and catching them all clears the 
     assert.match(state(b), /scene=plaque/);
     await b.press('b');
     assert.equal(b.lua('return mosa_debug.face_thief()'), true, `a thief in ${id}`);
-    for (let i = 0; i < 60 && !/scene=artcard/.test(state(b)); i++) { await b.frames(1); peak = Math.max(peak, b.lastInstructions()); }
+    for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) { await b.frames(1); peak = Math.max(peak, b.lastInstructions()); }
     assert.match(state(b), new RegExp(`scene=artcard .*left=${2 - n} `), `caught in ${id}`);
     await b.press('a'); await b.frames(2); // see it in HD
     assert.match(b.qr()?.text ?? '', /^https:\/\//);
@@ -162,6 +169,58 @@ test('a work on its wall opens up close, joins the record, and links to the real
   assert.ok(link && /^https:\/\//.test(link.text) && link.text.length <= 256, JSON.stringify(link));
   const again = await bootApp({ storage: b.storageDump() });
   assert.match(state(again), /seen=1 /, 'kept across relaunches');
+  assert.deepEqual(b.errors, []);
+});
+
+test('a thief who reaches a door gets away into the next room, and the hunt moves', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  const heist = String(b.lua('return mosa_debug.heist()')).split(',');
+  b.lua(`mosa_debug.travel("${heist[0]}")`); await b.frames(2);
+  // Stand the thief beside a door into a room with no thief, the janitor close behind them.
+  const to = b.lua(`
+    local gm = mosa_debug.game()
+    local th = gm.room.thief
+    for _, d in ipairs(gm.room.data.doors) do
+      if gm:open_to(d.to) then
+        for _, o in ipairs({ { 0, 1 }, { 0, -1 }, { 1, 0 }, { -1, 0 } }) do
+          local x, y = d.x + 0.5 + o[1], d.y + 0.5 + o[2]
+          if gm.room:walkable(x, y) and gm.room:walkable(x + o[1] * 2, y + o[2] * 2) then
+            th.x, th.y = x, y
+            gm.px, gm.py = x + o[1] * 2, y + o[2] * 2
+            gm.fx, gm.fy = o[1], o[2] -- facing away: heard, not seen
+            return d.to
+          end
+        end
+      end
+    end`);
+  assert.ok(to, 'a door to run for');
+  for (let i = 0; i < 60 && String(b.lua('return mosa_debug.heist()')).split(',')[0] === heist[0]; i++) await b.frames(1);
+  assert.equal(String(b.lua('return mosa_debug.heist()')).split(',')[0], to, 'the hunt moved next door');
+  b.lua(`mosa_debug.travel("${to}")`); await b.frames(2);
+  assert.equal(b.lua('return mosa_debug.face_thief()'), true, 'the thief is in there');
+  for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+  assert.match(state(b), /scene=artcard/, 'and can still be caught');
+  assert.deepEqual(b.errors, []);
+});
+
+test('the map travels: SELECT on another room teleports there', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  const here = /room=(\S+)/.exec(state(b))[1];
+  await b.press('b'); await b.press('down'); await b.press('a'); await b.frames(4);
+  assert.match(state(b), /scene=map/);
+  await b.press('right'); await b.frames(2);
+  await b.press('a'); await b.frames(40);
+  assert.match(state(b), /scene=game/);
+  const there = /room=(\S+)/.exec(state(b))[1];
+  assert.notEqual(there, here, 'arrived somewhere else');
+  // A second shift goes straight to the footage: the cupboard is for the first night.
+  await b.press('b'); for (let i = 0; i < 5; i++) await b.press('down');
+  await b.press('a'); await b.frames(2);
+  assert.match(state(b), /scene=title/);
+  await b.press('a'); await b.frames(2);
+  assert.match(state(b), /scene=briefing/);
   assert.deepEqual(b.errors, []);
 });
 

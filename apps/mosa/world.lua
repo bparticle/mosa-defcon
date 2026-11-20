@@ -109,6 +109,9 @@ end
 
 function Room:resume(pause)
   if not self.cells then self:lay(pause) end
+  -- A thief who ran in here while the room was folded away.
+  local inc = self.incoming
+  if inc then self.incoming = nil; self:let_in(inc[1], inc[2]) end
 end
 
 --- Build a playable room from synced data.
@@ -276,13 +279,38 @@ end
 
 -- ── the thief ───────────────────────────────────────────────────────────────
 -- A thief creeps about the dark with a work under one arm. In the light they
--- are dazzled: slow, and running from the janitor. Held in the beam long
--- enough (HEAT seconds), they drop the work and bolt.
+-- are dazzled: slow, and making for the nearest door away from the janitor.
+-- Footsteps close by in the dark send them for a door too. Held in the beam
+-- long enough (HEAT seconds), they drop the work; reach a door first and they
+-- are away into the next room, work and all.
 
-local SNEAK, DAZZLED, HEAT = 1.7, 1.25, 0.8
+local SNEAK, DAZZLED, HEAT, HEAR = 1.7, 1.25, 1.1, 3.2
 
---- Advance the thief; returns "caught" the moment they give up.
-function Room:update_thief(dt, jx, jy, lit, rng)
+--- The door a thief would run for: the nearest one on the far side from the
+--- janitor, into a room `ok(to)` allows.
+function Room:escape_door(th, jx, jy, ok)
+  local best, bd = nil, nil
+  local ax, ay = th.x - jx, th.y - jy
+  for _, d in ipairs(self.data.doors) do
+    local dx, dy = d.x + 0.5 - th.x, d.y + 0.5 - th.y
+    if dx * ax + dy * ay > 0 and (not ok or ok(d.to)) then
+      local dd = dx * dx + dy * dy
+      if not bd or dd < bd then best, bd = d, dd end
+    end
+  end
+  return best
+end
+
+--- A thief arriving through the door from `from` (one that got away next door).
+function Room:let_in(work, from)
+  if not self.cells then self.incoming = { work, from }; return end
+  local x, y = self:arrival(from)
+  self.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0.6, seen = false }
+end
+
+--- Advance the thief; returns "caught" the moment they give up, or "fled" and
+--- the door they got away through.
+function Room:update_thief(dt, jx, jy, lit, rng, ok)
   local th = self.thief
   if not th or th.gone then return nil end
   if th.caught then
@@ -291,20 +319,33 @@ function Room:update_thief(dt, jx, jy, lit, rng)
     return nil
   end
   local speed = SNEAK
+  local ax, ay = th.x - jx, th.y - jy
+  local heard = not lit and ax * ax + ay * ay < HEAR * HEAR
+  local run = not th.stay and (lit or heard) and self:escape_door(th, jx, jy, ok)
+  -- The moment they hear you: a "!" over their head, even in the dark.
+  if run and not th.running then th.alert = 0.8 end
+  th.running = run and true or false
+  if th.alert then th.alert = th.alert > dt and th.alert - dt or nil end
   if lit then
     th.seen = true
     th.heat = th.heat + dt
     speed = DAZZLED
-    -- Away from the janitor, with a little sideways wobble.
-    local dx, dy = th.x - jx, th.y - jy
-    local d = math.sqrt(dx * dx + dy * dy)
-    if d > 0.01 then th.fx, th.fy = dx / d, dy / d end
     if th.heat >= HEAT then
       th.caught = 0.6
       return "caught"
     end
   else
     th.heat = math.max(0, th.heat - dt * 0.5)
+  end
+  if run then
+    local dx, dy = run.x + 0.5 - th.x, run.y + 0.5 - th.y
+    local d = math.sqrt(dx * dx + dy * dy)
+    if d > 0.01 then th.fx, th.fy = dx / d, dy / d end
+  elseif lit then
+    -- Nowhere to run: away from the janitor.
+    local d = math.sqrt(ax * ax + ay * ay)
+    if d > 0.01 then th.fx, th.fy = ax / d, ay / d end
+  else
     th.turn = th.turn - dt
     if th.turn <= 0 then
       th.turn = 0.8 + rng:float() * 1.6
@@ -321,6 +362,10 @@ function Room:update_thief(dt, jx, jy, lit, rng)
     th.fx, th.fy, th.turn = math.cos(a), math.sin(a), 0.5
   end
   th.step = th.step + moved
+  if run then
+    local door = self:door_under(th.x, th.y)
+    if door then th.gone = true; return "fled", door end
+  end
   return nil
 end
 
@@ -580,11 +625,26 @@ function Room:draw(px, py, fx, fy, t, walk)
   end
   remember()
 
-  -- Exits glow in the dark like exit signs, so the way out is never lost.
+  -- Exits glow in the dark like exit signs, so the way out is never lost: a
+  -- chevron pointing through the doorway, for the doors within a few rooms' walk.
   for _, d in ipairs(self.data.doors) do
     local sx, sy = d.x * TILE - cx, d.y * TILE - cy
-    if sx > -TILE and sx < ui.W and sy > -TILE and sy < ui.H and not light.lit(L, sx + 7, sy + 7) then
-      g.fill_rect(sx + 5, sy + 6, 4, 2, ui.ACCENT)
+    local ddx, ddy = d.x + 0.5 - px, d.y + 0.5 - py
+    if sx > -TILE and sx < ui.W and sy > -TILE and sy < ui.H and ddx * ddx + ddy * ddy < 196
+      and not light.lit(L, sx + 7, sy + 7) then
+      if not d.ox then
+        d.ox, d.oy = 0, -1
+        for _, o in ipairs({ { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } }) do
+          if self:cell(d.x + o[1], d.y + o[2]) == VOID then d.ox, d.oy = o[1], o[2]; break end
+        end
+      end
+      local mx, my = sx + 7, sy + 7
+      for i = 0, 2 do
+        -- Three rows of a chevron, its tip toward the way out.
+        local along, across = 2 - i, i + 1
+        if d.oy ~= 0 then g.fill_rect(mx - across, my + d.oy * along, 1, 1, ui.ACCENT); g.fill_rect(mx + across - 1, my + d.oy * along, 1, 1, ui.ACCENT)
+        else g.fill_rect(mx + d.ox * along, my - across, 1, 1, ui.ACCENT); g.fill_rect(mx + d.ox * along, my + across - 1, 1, 1, ui.ACCENT) end
+      end
     end
   end
 
@@ -637,6 +697,20 @@ function Room:draw(px, py, fx, fy, t, walk)
       local lx = sx + (tface == "left" and -9 or 4)
       g.rect(lx, sy - 11, 6, 7, ui.PAPER)
       g.fill_rect(lx + 1, sy - 10, 4, 5, th.work.tint)
+      if th.alert then
+        g.fill_rect(sx - 3, sy - 31, 7, 11, ui.INK)
+        g.text("!", sx - 2, sy - 29, ui.BG)
+      end
+      -- How long they have been dazzled: a bar over their head that fills.
+      if th.heat > 0 then
+        local w = math.min(12, math.floor(12 * th.heat / HEAT))
+        g.fill_rect(sx - 7, sy - 22, 14, 4, ui.SHADOW)
+        g.fill_rect(sx - 6, sy - 21, 12, 2, ui.DIM)
+        g.fill_rect(sx - 6, sy - 21, w, 2, ui.INK)
+      end
+    elseif th.alert then
+      g.fill_rect(sx - 3, sy - 31, 7, 11, ui.INK)
+      g.text("!", sx - 2, sy - 29, ui.BG)
     elseif (t * 0.7 + th.x) % 3 < 0.35 then
       local dx, dy = th.x - px, th.y - py
       if dx * dx + dy * dy < 81 then

@@ -19,10 +19,10 @@ for the museum.
 
 | | | |
 | --- | --- | --- |
-| ![Title](docs/screens/01-title.png) | ![The cupboard](docs/screens/02-intro-cupboard.png) | ![The briefing](docs/screens/04-briefing.png) |
+| ![Title](docs/screens/01-title.png) | ![The footage](docs/screens/04-the-footage.png) | ![The briefing](docs/screens/04-briefing.png) |
 | ![Art on the wall](docs/screens/06-art-on-the-wall.png) | ![A work up close](docs/screens/07-art-card.png) | ![See it in HD](docs/screens/08-see-it-in-hd.png) |
 | ![A thief in the light](docs/screens/10-thief-in-the-light.png) | ![Recovered](docs/screens/11-recovered.png) | ![Museum map](docs/screens/15-museum-map.png) |
-| ![The art](docs/screens/16-the-art.png) | ![All clear](docs/screens/19-all-clear.png) | ![Lanyard](docs/screens/21-lanyard.png) |
+| ![The art](docs/screens/16-the-art.png) | ![Teleport](docs/screens/22-teleport.png) | ![All clear](docs/screens/19-all-clear.png) |
 
 *Screenshots come from the headless Solana OS in `tools/lib/host.mjs`
 (`pnpm preview`). The firmware draws QR codes itself, so they show as
@@ -79,10 +79,12 @@ None of them predict the ESP32-C5's speed. Test on a real badge before an event.
 | --- | --- |
 | D-pad | Walk; move through menus |
 | SELECT | Look at a work up close; read a plaque or an empty frame's label; choose |
-| CANCEL | Clipboard (pause): museum map, the art, bottles, wave, clock out. On the title: leave the app |
+| CANCEL | Clipboard (pause): map and travel, the art, bottles, wave, clock out. On the title: leave the app |
 
 The flashlight points where you walk. Hold it on a thief for a moment and
-they drop the work they took. Walk into a bottle to pick it up. The LEDs
+they drop the work they took; let them reach a door and they get away into
+the next room. On the map, SELECT on any room travels there, as in the HD
+museum. Walk into a bottle to pick it up. The LEDs
 sweep as you near a thief, and otherwise blink in the colour of the nearest
 bottle, faster as you get closer.
 
