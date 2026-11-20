@@ -82,6 +82,15 @@ test('CANCEL on the title leaves the app; anywhere else it steps back', async ()
   assert.notEqual(await b.press('b'), true, 'CANCEL on the title returns false: Solana OS closes the app');
 });
 
+test('SELECT and CANCEL act on a fresh press (repeat 0) and ignore held repeats', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  assert.equal(b.call('on_key', 'back', 1), true, 'a held CANCEL repeat is swallowed');
+  assert.match(state(b), /scene=game/);
+  b.call('on_key', 'back', 0); await b.frames(2);
+  assert.match(state(b), /scene=pause/, 'repeat 0 is a fresh press');
+});
+
 test('every room can be entered, walked and drawn, within the budgets', async () => {
   const b = await bootApp();
   await clockIn(b);

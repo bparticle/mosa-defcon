@@ -398,7 +398,7 @@ export class SolanaOS {
   async press(key, { after = 3 } = {}) {
     const k = KEYS[key] ?? key;
     this.engine.global.get('__keys_set')(k, true);
-    const handled = this.call('on_key', k, false);
+    const handled = this.call('on_key', k, 0); // the firmware passes repeat as an int: 0 is a fresh press
     await this.frames(1);
     this.engine.global.get('__keys_set')(k, false);
     await this.frames(after);
@@ -409,7 +409,7 @@ export class SolanaOS {
   async hold(key, count) {
     const k = KEYS[key] ?? key;
     this.engine.global.get('__keys_set')(k, true);
-    this.call('on_key', k, false);
+    this.call('on_key', k, 0); // the firmware passes repeat as an int: 0 is a fresh press
     await this.frames(count);
     this.engine.global.get('__keys_set')(k, false);
     await this.frames(1);

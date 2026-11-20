@@ -1228,7 +1228,9 @@ end
 local KEYS = { select = "a", back = "b" }
 function on_key(key, rep)
   local k = KEYS[key] or key
-  if rep and (k == "a" or k == "b") then return true end -- one press, one step back
+  -- Solana OS passes the repeat count as an int, and 0 is truthy in Lua.
+  local again = rep == true or (type(rep) == "number" and rep > 0)
+  if again and (k == "a" or k == "b") then return true end -- one press, one step back
   idle = 0
   dirty = true
   local s = top()

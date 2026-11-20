@@ -5,6 +5,14 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-20
+
+### Fixed
+
+- SELECT and CANCEL work on the badge again. Solana OS passes the key repeat
+  as a number, and the app took a fresh press (0) for a held repeat, so
+  only the arrows did anything.
+
 ## [0.4.0] - 2026-11-20
 
 The footage: a briefing you watch, travel between rooms, and thieves that run.
@@ -170,7 +178,8 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.4.0...HEAD
+[Unreleased]: ../../compare/v0.4.1...HEAD
+[0.4.1]: ../../compare/v0.4.0...v0.4.1
 [0.4.0]: ../../compare/v0.3.0...v0.4.0
 [0.3.0]: ../../compare/v0.2.0...v0.3.0
 [0.2.0]: ../../compare/v0.1.0...v0.2.0
