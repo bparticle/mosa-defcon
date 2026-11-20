@@ -19,8 +19,14 @@ local state = {
   goals = {},   -- "roomId/goalId" → true
   pickups = 0,
   caught = 0,
-  cleared = 0,  -- shifts that ended with every work back on its wall
+  cleared = 0,  -- nights that ended at dawn with nothing lost
   shifts = 0,
+  -- Nights, by the server's day (UTC): the first shift of a day starts its night.
+  nights = 0,   -- days worked
+  streak = 0,   -- days worked in a row, up to the last one
+  best_streak = 0,
+  last_day = -1,
+  best = 0,     -- most works recovered in one shift
 }
 record.state = state
 
@@ -44,6 +50,11 @@ local function save()
     caught = state.caught,
     cleared = state.cleared,
     shifts = state.shifts,
+    nights = state.nights,
+    streak = state.streak,
+    best_streak = state.best_streak,
+    last_day = state.last_day,
+    best = state.best,
   })
 end
 
@@ -60,6 +71,12 @@ function record.load()
   state.caught = tonumber(saved.caught) or 0
   state.cleared = tonumber(saved.cleared) or 0
   state.shifts = tonumber(saved.shifts) or 0
+  -- Added in 0.6.0: a record from before simply has none of them yet.
+  state.nights = tonumber(saved.nights) or 0
+  state.streak = tonumber(saved.streak) or 0
+  state.best_streak = tonumber(saved.best_streak) or 0
+  state.last_day = tonumber(saved.last_day) or -1
+  state.best = tonumber(saved.best) or 0
 end
 
 --- Returns true when the piece is new to this badge.
@@ -105,8 +122,37 @@ function record.clear()
   save()
 end
 
-function record.clock_in()
+--- A shift begins. `day` is the server's day (nil when the badge has never
+--- synced its clock). Returns true when this is the first shift of the day:
+--- a new night, which counts toward the streak.
+function record.clock_in(day)
   state.shifts = state.shifts + 1
+  local first = false
+  if day and day ~= state.last_day then
+    first = true
+    state.nights = state.nights + 1
+    state.streak = (state.last_day == day - 1) and state.streak + 1 or 1
+    if state.streak > state.best_streak then state.best_streak = state.streak end
+    state.last_day = day
+  end
+  save()
+  return first
+end
+
+--- Has today's night been worked? (False when the clock is unknown.)
+function record.worked(day)
+  return day ~= nil and state.last_day == day
+end
+
+--- The streak as it stands today: it lapses once a day is missed.
+function record.streak_now(day)
+  if not day or state.last_day < day - 1 then return 0 end
+  return state.streak
+end
+
+--- A shift is over: keep the best.
+function record.dawn(recovered)
+  if recovered > state.best then state.best = recovered end
   save()
 end
 

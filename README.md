@@ -17,12 +17,21 @@ collection, lying on the museum's own find spots, each a QR away from being
 collected on Solana. Leave the badge alone and it becomes a walking billboard
 for the museum.
 
+The night has a clock: 23:41 to dawn, about eight minutes of play. Clear a
+break-in and the security desk radios the next, sized to how you're doing;
+whatever is still inside at 06:00 leaves with the light. Every day brings a
+new night (the same first break-in for every janitor that day), a streak to
+keep, and works and bottles still to find. Recovered works earn !LAMPs, the
+badge's own currency, and once you've worked a night the desk can call you
+in the evening when the museum is hit again.
+
 | | | |
 | --- | --- | --- |
 | ![Title](docs/screens/01-title.png) | ![The footage](docs/screens/04-the-footage.png) | ![The briefing](docs/screens/04-briefing.png) |
 | ![Art on the wall](docs/screens/06-art-on-the-wall.png) | ![A work up close](docs/screens/07-art-card.png) | ![See it in HD](docs/screens/08-see-it-in-hd.png) |
 | ![A thief in the light](docs/screens/10-thief-in-the-light.png) | ![Recovered](docs/screens/11-recovered.png) | ![Museum map](docs/screens/15-museum-map.png) |
-| ![The art](docs/screens/16-the-art.png) | ![Teleport](docs/screens/22-teleport.png) | ![All clear](docs/screens/19-all-clear.png) |
+| ![The art](docs/screens/16-the-art.png) | ![Teleport](docs/screens/22-teleport.png) | ![The next break-in](docs/screens/23-break-in.png) |
+| ![All clear, for now](docs/screens/19-all-clear.png) | ![Dawn](docs/screens/24-dawn.png) | ![How to play](docs/screens/25-how-to-play.png) |
 
 *Screenshots come from the headless Solana OS in `tools/lib/host.mjs`
 (`pnpm preview`). The firmware draws QR codes itself, so they show as
@@ -79,12 +88,14 @@ None of them predict the ESP32-C5's speed. Test on a real badge before an event.
 | --- | --- |
 | D-pad | Walk; move through menus |
 | SELECT | Look at a work up close; choose |
-| CANCEL | Clipboard (pause): map and travel, the art, bottles, wave, clock out. On the title: leave the app |
+| CANCEL | Clipboard (pause, stops the clock): map and travel, the art, bottles, wave, clock out. On the title: leave the app |
 
 The flashlight points where you walk. Hold it on a thief for a moment and
 they drop the work they took; let them reach a door and they get away into
-the next room. On the map, SELECT on any room travels there, as in the HD
-museum. Walk into a bottle to pick it up. The LEDs
+the next room. On the map, SELECT on a room you've walked before travels there,
+as in the HD museum, for twenty minutes of the night; doors are free. HOW TO
+PLAY on the title has it all in five pages, and [docs/NIGHT.md](docs/NIGHT.md)
+says how the night works. Walk into a bottle to pick it up. The LEDs
 sweep as you near a thief, and otherwise blink in the colour of the nearest
 bottle, faster as you get closer.
 
@@ -116,6 +127,7 @@ mosa.lock.json    what the data was generated from; the append-only index regist
 ## Docs
 
 - [CONCEPTS.md](docs/CONCEPTS.md): the options considered and why Night Shift first
+- [NIGHT.md](docs/NIGHT.md): the clock, the desk's waves, dawn, streaks, !LAMPs and the evening call
 - [FLOW.md](docs/FLOW.md): from a badge at DEF CON to the HD museum
 - [SOLANA.md](docs/SOLANA.md): trust tiers: links, shift claims, booth beacons, badge signatures
 - [MOSA-INTEGRATION.md](docs/MOSA-INTEGRATION.md): how the sync keeps us in lockstep, and the museum-side changes

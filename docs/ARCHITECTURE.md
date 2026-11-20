@@ -19,13 +19,17 @@ and 1 MB in total, with paths in `[a-z0-9_-./]`. `tools/bundle.mjs` copies
 `build_info.lua` and `app.json`, checks every limit, and removes any stale
 files. `pnpm check` fails when the committed package doesn't match `src/`.
 
-The manifest asks for two permissions: `led` and `mesh`.
+The manifest asks for four permissions: `led`, `mesh`, `lamps` (award !LAMPs
+for recovered works) and `background` (the desk's evening call, `service.lua`).
 
 ## Lua modules (`src/`)
 
 | Module | Job |
 | --- | --- |
-| `main.lua` | Entry point and scenes (splash, title, game, art card, bottle card, QR, pause, art and bottle grids, map and travel, finale, lanyard, about), tonight's heist, LEDs, the Solana OS callbacks |
+| `main.lua` | Entry point and scenes (splash, title, game, art card, bottle card, QR, pause, art and bottle grids, map and travel, lanyard, about), the heists and the desk's waves, !LAMPs, LEDs, the Solana OS callbacks |
+| `night.lua` | The night as pure logic: the clock (23:41 to 06:00), the desk that sizes each wave from how fast the last was cleared, sightings, hours. See [NIGHT.md](NIGHT.md) |
+| `desk.lua` | The dawn report and the how-to-play pages, given what they need from `main.lua` |
+| `service.lua` | A Solana OS background service, run in a Lua state of its own: once an evening, if tonight isn't worked, one notification |
 | `story.lua` | The intro (the janitor's cupboard) and the briefing (security footage of a theft, then tonight's list), given what they need from `main.lua` |
 | `world.lua` | A room: grid laid out from synced rects, doors, landmarks, works on their walls or panels, bottles, the thief, and the flashlight renderer (lit runs per tile row, a faint memory pass) |
 | `light.lua` | The flashlight's shape: a cone and a pool as integer spans per scanline, and a point test |
@@ -33,7 +37,7 @@ The manifest asks for two permissions: `led` and `mesh`.
 | `gfx.lua` | The one full-screen `ui.canvas`, colours, rectangles, lines, text from the font, and the firmware's QR object |
 | `font.lua` | The 6×8 GLCD font (ASCII 32–126) as hex |
 | `kit.lua` | MOSA's 2D language: tracked labels, wrapping, key blocks and hints, sprite drawing, and the brutalist kit (board-marked concrete, slabs, block letters, catalogue numbers). `main.lua` calls it `ui` |
-| `record.lua` | Persistence in the app's storage; the shift-report code |
+| `record.lua` | Persistence in the app's storage: finds, nights, streaks; the shift-report code |
 | `net.lua` | Presence and waves over the Solana OS mesh |
 | `util.lua` | 32-bit-safe RNG, base32, hex bitsets |
 | `data/mosa_data.lua` | **Generated.** Never edit; run `pnpm sync` |
@@ -49,7 +53,7 @@ the single QR object in step with the top scene.
 | `main.lua` | 64 KB | `pnpm build` fails above it. Currently ~53 KB; the data module (~76 KB: floorplans, the map, 75 works and 41 bottles as RLE) is a separate file |
 | Lua heap | 6 MB | Only the current room is laid out (`Room:suspend/resume`); thumbnails draw from RLE with no cache. The real emulator reports a peak of ~0.6 MB. A test fails above 640 KB on the host |
 | Instructions per callback | 200 000 | Room layout runs as a coroutine, up to four slices a tick behind a "threshold" screen. A slice is measured in cell lookups (`SLICE` in `world.lua`), not rows, so a wide room is paced like a narrow one; the tick a room opens (arriving plus its first draw) is the peak, ~87 000 in the 92-wide room1. The badge counts a coroutine's instructions against the tick that resumed it, and so does the test host. The flashlight draws runs of tile colour per scanline inside the cone, skips what it can't reach and draws identical scanline pairs once; the beam's dithered fade is a list of 2x2 dots per d-pad direction, worked out once while the first room loads, so a frame only places them (peak ~85 000 walking, in the lit Lobby). An overlay (a card, the clipboard) draws only itself the tick it opens: the canvas still holds the walk beneath. The title is static and repaints only when its art changes. The grids paint 12 thumbnails a tick. Canvas pixels cost 1 instruction per 16 |
-| Storage | 16 KB | One key, `record`, ~250 bytes (bottles, rooms, stamps, works looked at, thieves caught) |
+| Storage | 16 KB | Two keys: `record`, ~300 bytes (bottles, rooms, stamps, works looked at, thieves caught, nights and streaks), and `desk`, ~40 bytes, which the app and the background service share (the day last worked, the day last called) |
 | Mesh | 4 messages/s, 200 B as JSON | A presence every 2.5 s, ~30 B |
 | UI objects | 128 | One canvas and at most one QR |
 
@@ -59,7 +63,7 @@ count.
 ### Static scenes don't repaint
 
 The canvas keeps its pixels between ticks. Scenes marked `static` (title, cards,
-QR, pause, grids, map, finale, about, lanyard) draw once and then only when
+QR, pause, grids, map, how to play, about, lanyard) draw once and then only when
 something changes (`dirty`: a button, a push or pop, a toast, a scene calling
 `invalidate()`). A badge in Lanyard mode spends almost no CPU, which saves
 battery when it's worn all day.

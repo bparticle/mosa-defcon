@@ -23,7 +23,11 @@ flowchart TD
     WALK --> FIND[Find a bottle<br/>museum label card]
     WALK --> STAMP[Room stamps<br/>MOSA's own goals]
     WALK <-->|mesh| PEERS[Other janitors nearby<br/>wave · mythical unlock]
-    THIEF --> CLEAR[All clear<br/>the night's tally]
+    THIEF --> WAVE[All clear, for now<br/>the desk radios the next wave]
+    WAVE --> THIEF
+    WALK --> CLEAR[Dawn at 06:00<br/>the night's report]
+    CLEAR -->|tomorrow| CALL[The desk calls in the evening<br/>a new night, a streak]
+    CALL --> APP
     FIND --> REC[Bottles · shift report]
     STAMP --> REC
   end
@@ -75,10 +79,18 @@ The App Store installs **one app package**, so the whole app (code, floorplans,
   they drop the work. Dazzled, or hearing you close by in the dark (a "!"),
   they run for a door; reach it and they're away into the next room. The
   LEDs sweep as you close in, and the map blinks the rooms they're in.
-- **Travel.** On the clipboard's map, SELECT on any room and the light
-  closes in and opens there, like the HD museum's travel.
-  Catch all three and the lights come up: **ALL CLEAR**, the night's tally,
-  and the shift report one scan away.
+- **Travel.** On the clipboard's map, SELECT on a room you've walked and
+  the light closes in and opens there, like the HD museum's travel. A trip
+  costs twenty minutes of the night.
+- **The night.** The clock runs from 23:41 while you walk (the clipboard
+  stops it). Catch a wave and it's **ALL CLEAR, FOR NOW**; after a calm the
+  desk radios the next break-in, more thieves if you were quick, fewer and
+  slower if you weren't. At 06:00 the lights come up on the dawn report:
+  works back, works lost, the streak, the !LAMPs earned, what's still out
+  there, and the shift report one scan away. [NIGHT.md](NIGHT.md) has it all.
+- **Come back.** A new night every day, the same first break-in for every
+  janitor that day. Keep a streak. After a first dawn the badge may let the
+  desk call in the evening: one notification when tonight hasn't been worked.
 - **Sweep.** Bottles from the live MOSA Bottles collection lie on the HD
   museum's find spots, picked as the catalogue hunts them. Walk into one to
   pick it up. The LEDs act as a metal detector: the nearest bottle's colour,

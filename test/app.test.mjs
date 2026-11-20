@@ -78,6 +78,8 @@ test('CANCEL on the title leaves the app; anywhere else it steps back', async ()
   assert.match(state(b), /scene=pause/);
   await b.press('b'); await b.press('b'); // back to work, then the clipboard again
   await b.press('up'); await b.press('a'); // CLOCK OUT is the last item
+  assert.match(state(b), /scene=dawn/, 'clocking out ends the shift with its report');
+  await b.frames(40); await b.press('b');
   assert.match(state(b), /scene=title/);
   assert.notEqual(await b.press('b'), true, 'CANCEL on the title returns false: Solana OS closes the app');
 });
@@ -152,7 +154,10 @@ test('a thief held in the beam drops the work, and catching them all clears the 
     assert.match(b.qr()?.text ?? '', /^https:\/\//);
     await b.press('b'); await b.frames(2);
   }
-  assert.match(state(b), /scene=finale/, 'the lights come up');
+  assert.match(state(b), /scene=game/, 'a cleared wave keeps the night going');
+  assert.match(String(b.lua('return mosa_debug.night()')), /recovered=3 lost=0 calm=\d+/, 'and the desk waits to radio the next');
+  b.lua(`mosa_debug.clock(${30 * 60})`); await b.frames(4);
+  assert.match(state(b), /scene=dawn/, 'the lights come up at dawn');
   await b.frames(100);
   await b.press('a'); await b.frames(2);
   assert.ok(b.qr()?.text.startsWith(`${HOME}?shift=`), 'the night ends one scan from the museum');
@@ -216,16 +221,26 @@ test('the map travels: SELECT on another room teleports there', async () => {
   const b = await bootApp();
   await clockIn(b);
   const here = /room=(\S+)/.exec(state(b))[1];
+  // Only rooms walked before can be travelled to: first, one that hasn't been.
   await b.press('b'); await b.press('down'); await b.press('a'); await b.frames(4);
   assert.match(state(b), /scene=map/);
+  await b.press('right'); await b.frames(2);
+  await b.press('a'); await b.frames(4);
+  assert.match(state(b), /scene=map/, 'an unwalked room is out of reach');
+  await b.press('b'); await b.press('b'); // the map, then the clipboard
+  b.lua('local R = require("record"); for _, r in ipairs(require("data.mosa_data").rooms) do R.state.rooms[r.idx] = true end');
+  const before = Number(/min=(\d+)/.exec(String(b.lua('return mosa_debug.night()')))[1]);
+  await b.press('b'); await b.press('down'); await b.press('a'); await b.frames(4);
   await b.press('right'); await b.frames(2);
   await b.press('a'); await b.frames(40);
   assert.match(state(b), /scene=game/);
   const there = /room=(\S+)/.exec(state(b))[1];
   assert.notEqual(there, here, 'arrived somewhere else');
+  const after = Number(/min=(\d+)/.exec(String(b.lua('return mosa_debug.night()')))[1]);
+  assert.ok(after - before >= 20, `the trip cost twenty minutes of the night (${before} to ${after})`);
   // A second shift goes straight to the footage: the cupboard is for the first night.
   await b.press('b'); for (let i = 0; i < 5; i++) await b.press('down');
-  await b.press('a'); await b.frames(2);
+  await b.press('a'); await b.frames(40); await b.press('b'); await b.frames(2);
   assert.match(state(b), /scene=title/);
   await b.press('a'); await b.frames(2);
   assert.match(state(b), /scene=briefing/);
@@ -261,12 +276,12 @@ test('a found bottle is kept across relaunches and shows up in the shift report'
 
 test('the museum link and the shift report are QR codes Solana OS draws', async () => {
   const b = await bootApp();
-  for (let i = 0; i < 3; i++) await b.press('down');
+  for (let i = 0; i < 4; i++) await b.press('down');
   await b.press('a'); await b.frames(2); // lanyard
   assert.equal(b.qr()?.text, HOME);
   await b.press('b');
   assert.equal(b.qr(), null, 'the code goes away with its screen');
-  for (let i = 0; i < 3; i++) await b.press('up');
+  for (let i = 0; i < 4; i++) await b.press('up');
   await clockIn(b);
   b.lua('mosa_debug.to_bottle()'); await b.frames(3);
   await b.press('a'); await b.frames(2); // the card's museum link
@@ -405,7 +420,118 @@ test('the build is a package Solana OS accepts', () => {
   const manifest = JSON.parse(fs.readFileSync(new URL('../apps/mosa/app.json', import.meta.url), 'utf8'));
   assert.match(manifest.id, /^[a-z0-9-]{3,24}$/);
   assert.ok(manifest.name.length <= 20);
-  assert.deepEqual([...manifest.permissions].sort(), ['led', 'mesh']);
+  assert.deepEqual([...manifest.permissions].sort(), ['background', 'lamps', 'led', 'mesh']);
   const main = fs.statSync(new URL('../apps/mosa/main.lua', import.meta.url)).size;
   assert.ok(main <= 64 * 1024, `main.lua ${main} bytes`);
+});
+
+// ── the night ──────────────────────────────────────────────────────────────
+const nightOf = (b) => String(b.lua('return mosa_debug.night()'));
+const minOf = (b) => Number(/min=(\d+)/.exec(nightOf(b))[1]);
+
+test('the night runs on a clock that the clipboard stops, and dawn ends it', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  const m0 = minOf(b);
+  assert.equal(m0, 23 * 60 + 41, 'the shift starts at 23:41');
+  await b.frames(120);
+  const m1 = minOf(b);
+  assert.ok(m1 > m0, `the clock runs while you walk (${m0} to ${m1})`);
+  await b.press('b'); await b.frames(120);
+  assert.equal(minOf(b), m1, 'and stops while the clipboard is up');
+  await b.press('b');
+  b.lua(`mosa_debug.clock(${30 * 60})`); await b.frames(3);
+  assert.match(state(b), /scene=dawn/);
+  assert.match(nightOf(b), /lost=3/, 'the thieves still inside leave with the light');
+  assert.equal(b.lua('return service.running()'), true, 'after a dawn the desk offers its evening call');
+  assert.deepEqual(b.errors, []);
+});
+
+test('clearing a break-in brings the next one, sized by the desk', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  for (const id of String(b.lua('return mosa_debug.heist()')).split(',')) {
+    b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
+    b.lua('mosa_debug.face_thief()');
+    for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+    await b.press('b'); await b.frames(2);
+  }
+  const calm = Number(/calm=(\d+)/.exec(nightOf(b))[1]);
+  b.lua(`mosa_debug.clock(${calm + 1})`); await b.frames(3);
+  assert.match(nightOf(b) + ' ' + state(b), /wave=2/, 'the desk radios a second wave');
+  const left = Number(/left=(\d+)/.exec(state(b))[1]);
+  assert.ok(left >= 1 && left <= 3, `with one to three thieves (${left})`);
+  const next = String(b.lua('return mosa_debug.heist()')).split(',').slice(3);
+  b.lua(`mosa_debug.travel("${next[0]}")`); await b.frames(2);
+  assert.equal(b.lua('return mosa_debug.face_thief()'), true, 'and its thief is in the room the desk named');
+  for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+  assert.match(state(b), /scene=artcard/);
+  assert.deepEqual(b.errors, []);
+});
+
+test('nights count by the day: a streak grows, and lapses when a day is missed', async () => {
+  const b = await bootApp();
+  const run = (lua) => b.lua(`local R = require("record"); ${lua}`);
+  assert.equal(run('return R.clock_in(20000)'), true, 'the first shift of a day starts a night');
+  assert.equal(run('return R.clock_in(20000)'), false, 'a second shift that day does not');
+  run('R.clock_in(20001); R.clock_in(20002)');
+  assert.equal(run('return R.streak_now(20002)'), 3);
+  assert.equal(run('return R.streak_now(20004)'), 0, 'a missed day ends the streak');
+  run('R.clock_in(20005)');
+  assert.equal(run('return R.state.streak .. "," .. R.state.best_streak .. "," .. R.state.nights'), '1,3,4');
+});
+
+test('recovered works earn !LAMPs; an owner without X is told how', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  const id = String(b.lua('return mosa_debug.heist()')).split(',')[0];
+  b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
+  b.lua('mosa_debug.face_thief()');
+  for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+  assert.match(String(b.lua('return __lamps_log()')), /^3 Recovered /);
+  await b.press('b'); await b.frames(3);
+  assert.match(nightOf(b), /lamps=3/, 'the award comes back and is counted for the report');
+
+  const c = await bootApp();
+  c.lua('__lamps_mode = "needsX"');
+  await clockIn(c);
+  const id2 = String(c.lua('return mosa_debug.heist()')).split(',')[0];
+  c.lua(`mosa_debug.travel("${id2}")`); await c.frames(2);
+  c.lua('mosa_debug.face_thief()');
+  for (let i = 0; i < 100 && !/scene=artcard/.test(state(c)); i++) await c.frames(1);
+  await c.press('b'); await c.frames(3);
+  assert.match(nightOf(c), /lamps=0/);
+  assert.deepEqual([...b.errors, ...c.errors], []);
+});
+
+test('how to play turns its pages', async () => {
+  const b = await bootApp();
+  await b.frames(80);
+  await b.press('down'); await b.press('a'); await b.frames(2);
+  assert.match(state(b), /scene=howto/);
+  for (let i = 0; i < 6; i++) { await b.press('right'); await b.frames(1); }
+  await b.press('b');
+  assert.match(state(b), /scene=title/);
+  assert.deepEqual(b.errors, []);
+});
+
+test('the desk calls once in the evening, and not on a night already worked', async () => {
+  const b = await bootApp();
+  // The service runs in a state of its own on the badge; here, in place of the app.
+  b.lua('notices = {}; service.notify = function(t) notices[#notices + 1] = t; return true end; service.status = function() end; require("service")');
+  const calls = () => Number(b.lua('return #notices'));
+  const tick = () => b.call('on_tick', 300000);
+  tick();
+  assert.equal(calls(), 0, 'not in the afternoon');
+  b.lua('__time_shift(4 * 3600)'); tick();
+  assert.equal(calls(), 1, 'at six in the evening it calls');
+  tick();
+  assert.equal(calls(), 1, 'once a day');
+  b.lua('__time_shift(86400)');
+  b.lua('local d = storage.get("desk"); d.worked = sys.time() // 86400; storage.set("desk", d)');
+  tick();
+  assert.equal(calls(), 1, 'not when tonight is already worked');
+  b.lua('__time_shift(86400)'); tick();
+  assert.equal(calls(), 2, 'and again the next evening');
+  assert.deepEqual(b.errors, []);
 });

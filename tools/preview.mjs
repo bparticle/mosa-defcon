@@ -108,24 +108,42 @@ async function main() {
     for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
     await b.press('b'); await b.frames(2);
   }
-  await b.frames(100);
+  await b.frames(10);
   await shot('19-all-clear');
-  await b.press('b'); await b.frames(4);
+  await b.frames(100);
 
   b.meshIn('7K2Q9M', { w: '@pixeljanitor' }); await b.frames(3);
   await shot('20-wave-received');
-
-  // Travel: SELECT on a room on the map, and the light closes in.
   await b.frames(100);
+
+  // The calm ends: the desk radios the next wave.
+  b.lua('local n = mosa_debug.game().night; mosa_debug.clock(n.calm + 1)'); await b.frames(4);
+  await shot('23-break-in');
+  await b.frames(120);
+
+  // Travel: SELECT on a walked room on the map, and the light closes in.
+  b.lua('local R = require("record"); for i = 1, 64 do R.state.rooms[i] = true end');
   await b.press('b'); await b.press('down'); await b.press('a'); await b.frames(2);
   await b.press('right'); await b.press('a');
   await shot('22-teleport');
-  await b.frames(40);
+  await b.frames(60);
+
+  // Dawn: the lights come up on the night.
+  b.lua('mosa_debug.clock(1800)'); await b.frames(110);
+  await shot('24-dawn');
+  await b.press('b'); await b.frames(4);
 
   const t = await bootApp();
-  for (let i = 0; i < 3; i++) await t.press('down');
+  for (let i = 0; i < 4; i++) await t.press('down');
   await t.press('a'); await t.frames(12);
   t.screenshot(path.join(OUT, '21-lanyard.png'), 2);
+  await t.press('b'); await t.frames(4);
+  for (let i = 0; i < 3; i++) await t.press('up');
+  await t.press('a'); await t.frames(4);
+  t.screenshot(path.join(OUT, '25-how-to-play.png'), 2);
+  await t.press('right'); await t.frames(2);
+  t.screenshot(path.join(OUT, '26-how-to-play-light.png'), 2);
+  if (t.errors.length) throw new Error(JSON.stringify(t.errors));
 
 
   console.log(shots.join('\n'));

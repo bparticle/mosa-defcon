@@ -9,6 +9,8 @@
   "category": "games",
   "permissions": [
     "led",
-    "mesh"
+    "mesh",
+    "lamps",
+    "background"
   ]
 }

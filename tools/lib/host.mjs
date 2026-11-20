@@ -201,7 +201,10 @@ local held = {}
 function __keys_set(k, down) held[k] = down or nil end
 sys = {}
 function sys.millis() return __millis() end
-function sys.time() return 1790000000 + __millis() // 1000 end
+-- The server clock; tests move it a day at a time with __time_shift.
+local time_offset = 0
+function __time_shift(s) time_offset = time_offset + s end
+function sys.time() return 1790000000 + time_offset + __millis() // 1000 end
 function sys.battery() return nil end
 function sys.keys() local out = {} for k in pairs(held) do out[k] = true end return out end
 function sys.memory() return { used = math.floor(host_cg("count") * 1024), max = 6 * 1024 * 1024 } end
@@ -235,6 +238,28 @@ function __timers()
     end
   end
 end
+
+-- !LAMPs (permission lamps): awards answer on the next timer pass, as the
+-- server's do. __lamps_mode "needsX" plays an owner who hasn't linked X.
+lamps = {}
+local lamp_log = {}
+__lamps_mode = "earn"
+function lamps.award(amount, reason, cb)
+  if type(amount) ~= "number" or type(reason) ~= "string" then error("lamps.award(amount, reason, cb)", 2) end
+  lamp_log[#lamp_log + 1] = amount .. " " .. reason
+  timer.after(20, function()
+    if __lamps_mode == "needsX" then cb(true, { awarded = 0, balance = 0, needsX = true })
+    else cb(true, { awarded = amount, balance = 100 + amount }) end
+  end)
+end
+function __lamps_log() return table.concat(lamp_log, string.char(10)) end
+
+-- The app's side of a background service (permission background).
+service = {}
+local svc_on = false
+function service.start(cb) svc_on = true; if cb then cb(true) end end
+function service.stop() svc_on = false end
+function service.running() return svc_on end
 
 local sent = {}
 mesh = {}

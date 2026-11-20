@@ -38,7 +38,7 @@ const MANIFEST = {
   icon: 'eye',
   accent: '7EE8A8',
   category: 'games',
-  permissions: ['led', 'mesh'],
+  permissions: ['led', 'mesh', 'lamps', 'background'],
 };
 
 function sources() {

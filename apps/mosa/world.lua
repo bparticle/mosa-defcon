@@ -125,6 +125,8 @@ function Room:resume(pause)
   -- A thief who ran in here while the room was folded away.
   local inc = self.incoming
   if inc then self.incoming = nil; self:let_in(inc[1], inc[2]) end
+  local st = self.staged
+  if st then self.staged = nil; self:break_in(st[1], st[2], self.rng) end
 end
 
 --- Build a playable room from synced data.
@@ -136,7 +138,7 @@ function world.build(data, opts)
   local charge = pacer(opts.pause)
   local rng = opts.rng
   local w, h = data.w, data.h
-  local r = setmetatable({ data = data, w = w, h = h, bottles = {}, art = {} }, Room)
+  local r = setmetatable({ data = data, w = w, h = h, bottles = {}, art = {}, rng = rng }, Room)
   for _, a in ipairs(data.art or {}) do
     local work = opts.works[a.w]
     if work then r.art[#r.art + 1] = { x = a.x, y = a.y, s = a.s, work = work, missing = opts.heist == a.w } end
@@ -181,7 +183,7 @@ function world.build(data, opts)
       local work = opts.works[opts.heist]
       local x, y = spot()
       if work and x then
-        r.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0, seen = false }
+        r.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0, seen = false, pace = opts.pace }
       end
     end
   end
@@ -317,7 +319,23 @@ function Room:let_in(work, from)
   for _, d in ipairs(self.data.doors) do if d.to == from then back = true end end
   if not back and self.data.doors[1] then from = self.data.doors[1].to end
   local x, y = self:arrival(from)
-  self.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0.6, seen = false }
+  local pace = self.thief and self.thief.pace
+  self.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0.6, seen = false, pace = pace }
+end
+
+--- A break-in: a thief takes `work` off this room's wall and stays to hide.
+--- `pace` scales how fast they move. A folded-away room stages it on return.
+function Room:break_in(work, pace, rng)
+  for _, a in ipairs(self.art) do if a.work == work then a.missing = true end end
+  if not self.cells then self.staged = { work, pace }; return end
+  local w, h, cells = self.w, self.h, self.cells
+  local x, y
+  for _ = 1, 80 do
+    local cx, cy = rng:int(w) - 1, rng:int(h) - 1
+    if cells[cy * w + cx + 1] == FLOOR and not self:near_door(cx, cy, 2) then x, y = cx + 0.5, cy + 0.5; break end
+  end
+  if not x then x, y = self:arrival(self.data.doors[1] and self.data.doors[1].to) end
+  self.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0, seen = false, pace = pace }
 end
 
 --- Advance the thief; returns "caught" the moment they give up, or "fled" and
@@ -330,7 +348,7 @@ function Room:update_thief(dt, jx, jy, lit, rng, ok)
     if th.caught <= 0 then th.gone = true end
     return nil
   end
-  local speed = SNEAK
+  local speed = SNEAK * (th.pace or 1)
   local ax, ay = th.x - jx, th.y - jy
   local heard = not lit and ax * ax + ay * ay < HEAR * HEAR
   local run = not th.stay and (lit or heard) and self:escape_door(th, jx, jy, ok)

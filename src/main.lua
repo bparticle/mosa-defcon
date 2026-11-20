@@ -12,6 +12,8 @@ local ui = require("kit")
 local world = require("world")
 local sprites = require("sprites")
 local story = require("story")
+local desk = require("desk")
+local night = require("night")
 local record = require("record")
 local net = require("net")
 local DATA = require("data.mosa_data")
@@ -136,14 +138,20 @@ end
 -- walls. The first is always one door from where the shift starts, so a new
 -- janitor meets one within a minute; the rest lean toward walls you haven't
 -- looked at yet.
+-- Later break-ins (opts.n thieves) skip rooms that already have a thief
+-- (opts.taken) and the room the janitor is standing in (opts.here). opts.rng
+-- seeds a day's first night, so everyone meets the same heist that day.
 local THIEVES = 3
-local function plan_heist()
+local function plan_heist(opts)
+  opts = opts or {}
+  local rand = opts.rng or rng
+  local count, taken = opts.n or THIEVES, opts.taken or {}
   local start = rooms_by_id[DATA.start]
   local near = {}
-  for _, d in ipairs(start and start.doors or {}) do near[d.to] = true end
+  if not opts.n then for _, d in ipairs(start and start.doors or {}) do near[d.to] = true end end
   local options = {}
   for _, r in ipairs(DATA.rooms) do
-    if #(r.art or {}) > 0 and not r.hidden then
+    if #(r.art or {}) > 0 and not r.hidden and not taken[r.id] and r.id ~= opts.here then
       local unseen = 0
       for _, a in ipairs(r.art) do if not record.state.seen[a.w] then unseen = unseen + 1 end end
       options[#options + 1] = { weight = 1 + math.min(6, #r.art) + unseen * 0.5, near = near[r.id], room = r }
@@ -153,20 +161,50 @@ local function plan_heist()
   local function take(pick)
     for i, o in ipairs(options) do if o == pick then table.remove(options, i); break end end
     local art = pick.room.art
-    plan[#plan + 1] = { room = pick.room.id, home = pick.room.id, work = art[rng:int(#art)].w }
+    plan[#plan + 1] = { room = pick.room.id, home = pick.room.id, work = art[rand:int(#art)].w }
   end
   local close = {}
   for _, o in ipairs(options) do if o.near then close[#close + 1] = o end end
-  if #close > 0 then take(rng:weighted(close)) end
-  while #plan < THIEVES and #options > 0 do take(rng:weighted(options)) end
+  if #close > 0 then take(rand:weighted(close)) end
+  while #plan < count and #options > 0 do take(rand:weighted(options)) end
   return plan
 end
 
 -- ── scenes ───────────────────────────────────────────────────────────────────
 
-local Splash, Title, Lanyard, Intro, Briefing, Game, Pause, Card, ArtCard, Code, Grid, Map, Finale, About
-Intro, Briefing = story.scenes({ top = top, push = push, pop = pop, flash = flash, plan_heist = plan_heist,
+local Splash, Title, Lanyard, Intro, Briefing, Game, Pause, Card, ArtCard, Code, Grid, Map, Dawn, HowTo, About
+
+-- Tonight's first heist: the day's first shift is seeded by the date, so
+-- every janitor meets the same break-in that day; later shifts are new.
+local function today() return night.day(sys.time and sys.time()) end
+local function tonight_plan()
+  local day = today()
+  if day and not record.worked(day) then return plan_heist({ rng = util.rng((day * 7919 + 104729) & 0x7FFFFFFF) }) end
+  return plan_heist()
+end
+
+-- !LAMPs: the badge's own currency. The app can award them within the
+-- daily cap the organisers set it; only owners who linked X earn them.
+local needs_x = false
+local function earn(game, amount, why)
+  if not (lamps and lamps.award) then return end
+  lamps.award(amount, why, function(ok, r)
+    if not ok or type(r) ~= "table" then return end
+    if (r.awarded or 0) > 0 then
+      game.night.lamps = game.night.lamps + r.awarded
+      if not toast then say("+" .. r.awarded .. " !LAMPS", why) end
+    elseif r.needsX then needs_x = true end
+  end)
+end
+
+Intro, Briefing = story.scenes({ top = top, push = push, pop = pop, flash = flash, plan_heist = tonight_plan,
   works_by_idx = works_by_idx, rooms_by_id = rooms_by_id, start = function(plan) push(Game.new(plan)) end })
+Dawn, HowTo = desk.scenes({ DATA = DATA, push = push, pop = pop, invalidate = invalidate, works_by_idx = works_by_idx,
+  needs_x = function() return needs_x end,
+  report_code = function()
+    return Code.new(report_url(), "SHIFT REPORT", record.found_count() .. " of " .. #DATA.pieces .. " bottles",
+      "Scan to carry your night shift into M.O.S.A.")
+  end })
 
 -- A menu helper: items = { { label, fn }, ... }. Numbered like a catalogue;
 -- the selected line is an inverted block of paper.
@@ -244,7 +282,8 @@ end
 Title = { sel = 1, art = 1, art_t = 0, name = "title", static = true }
 function Title:enter()
   self.items = {
-    { "CLOCK IN", function() push(record.state.shifts > 0 and Briefing.new(plan_heist()) or Intro.new()) end },
+    { "CLOCK IN", function() push(record.state.shifts > 0 and Briefing.new(tonight_plan()) or Intro.new()) end },
+    { "HOW TO PLAY", function() push(HowTo.new()) end },
     { "THE ART", function() push(Grid.new("art")) end },
     { "BOTTLES", function() push(Grid.new("bottles")) end },
     { "LANYARD", function() push(Lanyard) end },
@@ -269,7 +308,7 @@ function Title:draw()
   local lw = ui.tracked_width("NIGHT SHIFT", 1, 3)
   g.fill_rect(16, 64, lw + 12, 14, ui.PAPER)
   ui.tracked("NIGHT SHIFT", 22, 67, ui.PAPER_INK, 1, 3)
-  menu(self.items, 16, 104, self.sel, 18, 184)
+  menu(self.items, 16, 101, self.sel, 16, 184)
   -- The art panel, cantilevered over the band: a work, then a bottle, every few seconds.
   local p = on_show(self.art)
   ui.slab(212, 14, 94, 174)
@@ -280,7 +319,15 @@ function Title:draw()
   g.text(ui.fit(p.artist, 84), 218, 162, ui.MUTED)
   ui.tracked(p.sw and "ON THE WALL" or (ui.TIER[p.tier] or ""), 218, 175, ui.MUTED, 1, 1)
   g.fill_rect(0, 196, ui.W, 1, ui.DIM)
-  g.text("v" .. BUILD.version, 16, 204, ui.DIM)
+  -- The security desk's board: tonight, or the streak and tomorrow.
+  local day, st = today(), record.state
+  local board
+  if day and not record.worked(day) then board = "TONIGHT: A BREAK-IN"
+  elseif day then
+    local streak = record.streak_now(day)
+    board = streak > 1 and ("NIGHT " .. st.nights .. ", " .. streak .. " IN A ROW") or ("NIGHT " .. st.nights .. ". MORE TOMORROW")
+  else board = "v" .. BUILD.version end
+  g.text(board, 16, 204, (day and not record.worked(day)) and ui.INK or ui.DIM)
   local near = net.nearby()
   if near > 0 then g.text_right(plural(near, "JANITOR"):upper() .. " NEARBY", 306, 204, ui.ACCENT)
   elseif record.seen_count() + record.found_count() > 0 then
@@ -349,8 +396,9 @@ Game = { name = "game" }
 Game.__index = Game
 function Game.new(plan)
   local s = setmetatable({ built = {}, fx = 0, fy = -1, armed = false, step = 0, heist = {}, plan = plan or {},
-    caught = 0, tonight = { seen = 0, bottles = 0 } }, Game)
+    caught = 0, tonight = { seen = 0, bottles = 0 }, night = night.new(), pace = 1 }, Game)
   for _, h in ipairs(s.plan) do s.heist[h.room] = h.work end
+  night.begin_wave(s.night, #s.plan)
   s.ok = function(to) return s:open_to(to) end
   return s
 end
@@ -358,14 +406,56 @@ end
 function Game:enter()
   -- A first shift gets the controls along the bottom for its first seconds.
   if record.state.shifts == 0 then self.tips = t + 10 end
-  record.clock_in()
+  self.day = today()
+  self.first = record.clock_in(self.day)
+  -- Tell the desk (service.lua) tonight is worked: it won't call today.
+  if self.day then
+    local d = storage.get("desk")
+    if type(d) ~= "table" then d = {} end
+    d.worked = self.day
+    storage.set("desk", d)
+  end
   self:travel(DATA.start, nil)
 end
 function Game:leave()
   record.flush()
 end
-function Game:resume()
-  if self.all_clear then self.all_clear = false; push(Finale.new(self)) end
+
+--- The desk radios a break-in: the next wave, sized to how the last went.
+function Game:break_in()
+  local n = self.night
+  local size, pace = night.next_wave(n.wave + 1, n)
+  local here = self.room and self.room.data.id
+  local plan = plan_heist({ n = size, taken = self.heist, here = here })
+  if #plan == 0 then return end
+  self.pace = pace
+  for _, h in ipairs(plan) do
+    self.plan[#self.plan + 1] = h
+    self.heist[h.room] = h.work
+    local built = self.built[h.room]
+    if built then built:break_in(works_by_idx[h.work], pace, rng) end
+  end
+  night.begin_wave(n, #plan)
+  local cam = string.format("CAM %02d", rng:int(12))
+  if #plan == 1 then say(cam .. "  BREAK-IN", "Someone at a wall in " .. room_name(plan[1].room) .. ".", 3.4)
+  else say(cam .. "  " .. #plan .. " BREAK-INS", "The desk marked them on your map.", 3.4) end
+  flash(ui.ACCENT, 1.2)
+end
+
+--- Dawn (or clocking out early): the thieves still inside leave with the light.
+function Game:dawn(out)
+  local n = self.night
+  n.lost = self:thieves_left()
+  record.dawn(n.recovered)
+  if n.lost == 0 and n.recovered > 0 and not out then
+    record.clear()
+    earn(self, 10, "A clean night")
+  end
+  local streak = record.streak_now(self.day)
+  if self.first and streak >= 3 then earn(self, 5, streak .. " nights in a row") end
+  -- After a first dawn, offer the desk's evening call (the badge asks the owner).
+  if service and service.start and not service.running() then service.start(function() end) end
+  push(Dawn.new(self, out))
 end
 
 function Game:thieves_left() return #self.plan - self.caught end
@@ -396,7 +486,7 @@ function Game:travel(to, from)
     local room = self.built[to]
     if not room then
       room = world.build(data, { rng = rng, stock = stocker(net.nearby() > 0), pause = coroutine.yield,
-        works = works_by_idx, heist = self.heist[to] })
+        works = works_by_idx, heist = self.heist[to], pace = self.pace })
       self.built[to] = room
     else
       room:resume(coroutine.yield)
@@ -440,6 +530,8 @@ function Game:arrive(data)
   local th = self.room.thief
   if th and not th.gone and not th.caught then
     say("SOMEONE IS IN HERE", "Sweep the dark with your light.", 2.6)
+  elseif self.iris.warped then
+    say(night.clock(self.night.min), "Twenty minutes on the map.", 2)
   end
 end
 
@@ -456,6 +548,17 @@ function Game:fled(door)
   flash(th.work.tint, 0.6)
 end
 
+--- A thief has gone unseen too long: the desk says where the cameras saw one.
+function Game:sighting()
+  local here = self.room and self.room.data.id
+  for _, h in ipairs(self.plan) do
+    if not h.back and h.room ~= here then
+      say(string.format("CAM %02d  MOVEMENT", rng:int(12)), "Someone in " .. room_name(h.room) .. ".", 3)
+      return
+    end
+  end
+end
+
 --- Can a fleeing thief run into room `to`? Not into one with a thief already,
 --- nor one off the map.
 function Game:open_to(to)
@@ -466,14 +569,20 @@ end
 --- A thief gave up: the work goes back on its wall.
 function Game:recovered(work)
   local home
-  for _, h in ipairs(self.plan) do if h.work == work.idx then home = h.home end end
+  for _, h in ipairs(self.plan) do if h.work == work.idx and not h.back then home = h.home; h.back = true end end
   for _, a in ipairs((self.built[home] or self.room).art) do if a.work == work then a.missing = false end end
   self.heist[self.room.data.id] = nil
   self.caught = self.caught + 1
   record.catch()
   if record.see(work) then self.tonight.seen = self.tonight.seen + 1 end
   flash(work.tint, 1.4)
-  if self:thieves_left() == 0 then self.all_clear = true end
+  local n = self.night
+  n.recovered = n.recovered + 1
+  earn(self, 3, "Recovered " .. work.title)
+  if self:thieves_left() == 0 then
+    night.wave_cleared(n)
+    say("ALL CLEAR, FOR NOW", n.calm and "The desk will radio if anyone else gets in." or "Dawn is close. Keep walking.", 3.4)
+  end
   -- A beat to watch them go before the card comes up.
   self.catching = { work = work, til = t + 0.7 }
 end
@@ -501,6 +610,15 @@ function Game:update(dt)
     end
     return
   end
+
+  -- The night's clock, and what the desk has to say about it.
+  local n = self.night
+  local ev = night.advance(n, dt, self:thieves_left())
+  if ev == "dawn" then self:dawn(); return
+  elseif ev == "break-in" then self:break_in()
+  elseif ev == "sighting" then self:sighting()
+  elseif ev == "warning" then say("05:00", "An hour to dawn. They leave with the light.", 3)
+  elseif ev == "hour" and not toast then say(night.clock(n.min), night.chime(n.min), 2.2) end
   local mx, my = 0, 0
   if held.left then mx = mx - 1 end
   if held.right then mx = mx + 1 end
@@ -527,6 +645,7 @@ function Game:update(dt)
 
   -- The thief, caught in last frame's light.
   local lit = room:thief_lit(self.L, self.cx, self.cy)
+  if lit then n.since_seen = 0 end
   if lit and not self.coached then
     self.coached = true
     say("HOLD THE LIGHT ON THEM", "Keep them in the beam.", 2.4)
@@ -741,7 +860,7 @@ function Pause.new(game)
         elseif net.wave() then say("YOU WAVED", "Every janitor in range saw it.")
         else say("NO WAVE", "The radio is busy. Try again in a moment.") end
       end },
-    { "CLOCK OUT", function() pop(); pop() end },
+    { "CLOCK OUT", function() pop(); game:dawn(true) end },
   }
   return s
 end
@@ -751,10 +870,12 @@ function Pause:draw()
   ui.concrete(24, 6, 272, 202)
   g.fill_rect(24, 6, 272, 16, ui.PAPER)
   ui.tracked("ON SHIFT", 32, 10, ui.PAPER_INK, 1, 3)
+  local n = game.night
+  g.text_right(night.clock(n.min) .. "  " .. night.to_dawn(n.min) .. " TO DAWN", 288, 10, ui.PAPER_INK)
   g.text(ui.fit(game.room.data.name, 240, 2), 36, 30, ui.INK, 2)
   local left, total = game:thieves_left(), #game.plan
   if total == 0 then g.text("A quiet night", 36, 52, ui.MUTED)
-  elseif left == 0 then g.text("Every work is back on its wall", 36, 52, ui.ACCENT)
+  elseif left == 0 then g.text(n.calm and "All clear, for now" or "Every work is back on its wall", 36, 52, ui.ACCENT)
   else g.text(plural(left, "thie" .. (left == 1 and "f" or "ve")) .. " still in the museum", 36, 52, ui.INK) end
   local art = game.room.art
   if #art > 0 then
@@ -978,74 +1099,23 @@ function Map:draw()
     line = n .. " of " .. plural(#sel.art, "work") .. " looked at."
   else line = "No works hang here." end
   g.text_right(line, 310, y, ui.MUTED)
-  if game and game.room and sel.id == here then ui.hints({ "b", "back" }, 204)
-  elseif game then ui.hints({ "a", "travel here", "b", "back" }, 204)
+  if game and game.room and sel.id ~= here and record.state.rooms[sel.idx] then
+    ui.hints({ "a", "travel, " .. night.TRAVEL .. " min", "b", "back" }, 204)
+  elseif game and sel.id ~= here then ui.hints({ "b", "back" }, 204); g.text("WALK THERE FIRST", 10, 204, ui.DIM)
   else ui.hints({ "b", "back" }, 204) end
 end
 function Map:button(key)
   local game, sel = self.game, self.rooms[self.sel]
-  if key == "a" and game and game.room and sel and sel.id ~= game.room.data.id then
-    -- Like the HD museum's travel: any room on the map, in a blink.
+  if key == "a" and game and game.room and sel and sel.id ~= game.room.data.id and record.state.rooms[sel.idx] then
+    -- Like the HD museum's travel, to any room you've walked: in a blink,
+    -- for twenty minutes of the night.
     pop()
     if getmetatable(top()) == Pause then pop() end
+    game.night.min = game.night.min + night.TRAVEL
     game:warp(sel.id)
   elseif key == "b" then pop()
   elseif key == "left" or key == "up" then self.sel = (self.sel - 2) % #self.rooms + 1
   elseif key == "right" or key == "down" then self.sel = self.sel % #self.rooms + 1 end
-end
-
--- ── all clear: every work back on its wall ──────────────────────────────────
--- The lights come up, the night is tallied, and the museum is one scan away.
-Finale = { name = "finale" }
-Finale.__index = Finale
-function Finale.new(game)
-  record.clear()
-  return setmetatable({ game = game, t = 0 }, Finale)
-end
-function Finale:update(dt) self.t = self.t + dt end
-function Finale:draw()
-  local T, game = self.t, self.game
-  g.clear(ui.BG)
-  local up = math.min(1, T / 0.8)
-  ui.concrete(0, 0, ui.W, math.floor(96 * (1 - (1 - up) ^ 3)))
-  g.fill_rect(0, 96, ui.W, 2, ui.INK)
-  if T > 0.5 then
-    ui.tracked("THE LIGHTS COME UP", 16, 14, ui.MUTED, 1, 3)
-    ui.block("ALL", 16, 34, 5, ui.INK, ui.SHADOW)
-    local lw = ui.tracked_width("CLEAR", 2, 4)
-    g.fill_rect(16, 76, lw + 16, 22, ui.PAPER)
-    ui.tracked("CLEAR", 24, 80, ui.PAPER_INK, 2, 4)
-  end
-  if T > 1.1 then
-    local rows = {
-      { plural(game.caught, "thie" .. (game.caught == 1 and "f" or "ve")) .. " caught", ui.INK },
-      { plural(game.tonight.seen, "new work") .. " looked at", ui.MUTED },
-      { plural(game.tonight.bottles, "bottle") .. " picked up", ui.MUTED },
-    }
-    for i, r in ipairs(rows) do
-      if T > 1.1 + i * 0.25 then g.text(r[1], 16, 108 + i * 14, r[2]) end
-    end
-  end
-  if T > 2.2 then
-    ui.paragraph("Every work is back on its wall. See them in full resolution: your shift comes with you.", 16, 174, 288, ui.MUTED, 1, 10)
-  end
-  -- The thieves' loot, back where it belongs: one work per thief, side by side.
-  local x = 300
-  for i = #game.plan, 1, -1 do
-    local w = works_by_idx[game.plan[i].work]
-    if w and T > 0.7 + i * 0.2 then
-      x = x - 40
-      ui.mat(w, x, 112, 36, 36)
-    end
-  end
-  if T > 2.6 then ui.hints({ "a", "into mosa", "b", "keep walking" }, ui.HINTS_Y) end
-end
-function Finale:button(key)
-  if self.t < 1 then return end
-  if key == "a" then
-    pop()
-    push(Code.new(report_url(), "ALL CLEAR", "Every work is back on its wall.", "Scan to walk into M.O.S.A. in full resolution."))
-  elseif key == "b" then pop() end
 end
 
 About = { name = "about", static = true }
@@ -1116,7 +1186,7 @@ local function leds(dt)
     else
       led.off()
     end
-  elseif getmetatable(s) == Finale then
+  elseif getmetatable(s) == Dawn then
     local r, gg, b = rgb(ui.ACCENT)
     for i = 1, n do
       local k = 0.2 + 0.4 * (math.sin(t * 3 - i * 0.7) * 0.5 + 0.5)
@@ -1253,6 +1323,13 @@ mosa_debug = {
   end,
   report = function() return record.report_code(piece_count) end,
   nearby = function() return net.nearby() end,
+  night = function()
+    local n = mosa_debug.game().night
+    return string.format("min=%d wave=%d recovered=%d lost=%d calm=%s lamps=%d", math.floor(n.min), n.wave, n.recovered,
+      n.lost, n.calm and tostring(math.floor(n.calm)) or "-", n.lamps)
+  end,
+  clock = function(min) mosa_debug.game().night.min = min end,
+  break_in = function() mosa_debug.game():break_in() end,
   heist = function()
     local gm, out = mosa_debug.game(), {}
     for _, h in ipairs(gm.plan) do out[#out + 1] = h.room end
