@@ -5,6 +5,10 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-20
+
+The footage: a briefing you watch, travel between rooms, and thieves that run.
+
 ### Added
 - **The footage.** The briefing is now security-camera footage instead of a
   page of text: a work hangs in a pool of light, a thief creeps in, lifts it,
@@ -30,6 +34,8 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 - Exits are chevrons pointing through the doorway, shown for the doors near
   you, instead of dashes scattered across the dark.
 - Holding a thief in the light takes a little longer (1.1 s).
+
+Data: MOSA `2907085`, data schema 2, Solana OS 2.4 (Lua 5.5).
 
 ## [0.3.0] - 2026-11-20
 
@@ -164,7 +170,8 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.3.0...HEAD
+[Unreleased]: ../../compare/v0.4.0...HEAD
+[0.4.0]: ../../compare/v0.3.0...v0.4.0
 [0.3.0]: ../../compare/v0.2.0...v0.3.0
 [0.2.0]: ../../compare/v0.1.0...v0.2.0
 [0.1.0]: ../../releases/tag/v0.1.0
