@@ -5,6 +5,8 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-20
+
 The Rounds: a story, the real art, and a flashlight you can feel.
 
 ### Added
@@ -44,6 +46,8 @@ The Rounds: a story, the real art, and a flashlight you can feel.
   title and lanyard show works and bottles in turn.
 - The record keeps the works you've looked at and the thieves you've caught.
   The shift-report code is unchanged.
+- The App Store summary: "The Museum of Sirius Art after hours. Catch the
+  thieves. See the art in HD."
 - Data schema 2: works, find spots and the map in `mosa_data.lua`, and a new
   append-only `works` registry in `mosa.lock.json`.
 
@@ -51,6 +55,8 @@ The Rounds: a story, the real art, and a flashlight you can feel.
 - Balloons. They're a small game inside the HD museum, not what the night
   shift is about. Floor 1's "Full Floor Clearance" stamp goes with them.
 - The visitor map's list of rooms and goals (now the museum map).
+
+Data: MOSA `2907085`, data schema 2, Solana OS 2.4 (Lua 5.5).
 
 ## [0.2.0] - 2026-11-19
 
@@ -132,6 +138,7 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.2.0...HEAD
+[Unreleased]: ../../compare/v0.3.0...HEAD
+[0.3.0]: ../../compare/v0.2.0...v0.3.0
 [0.2.0]: ../../compare/v0.1.0...v0.2.0
 [0.1.0]: ../../releases/tag/v0.1.0

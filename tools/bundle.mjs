@@ -34,7 +34,7 @@ const MANIFEST = {
   name: 'M.O.S.A. Night Shift',
   version: pkg.version,
   author: 'Sirius Crocodile',
-  summary: 'The Museum of Sirius Art after hours. Find the bottles. Scan into the museum.',
+  summary: 'The Museum of Sirius Art after hours. Catch the thieves. See the art in HD.',
   icon: 'eye',
   accent: '7EE8A8',
   category: 'games',
