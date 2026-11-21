@@ -46,14 +46,14 @@ match `src/`.
 
 ## !LAMPs
 
-The App Store holds back an app whose manifest asks for the `lamps`
-permission until the organisers approve it. So !LAMPs are one switch,
-`const LAMPS` at the top of `tools/bundle.mjs`, off for now: the manifest
-leaves the permission out, `build_info.lua` carries `lamps = false`, and the
-game neither awards !LAMPs nor mentions them. The !LAMPs code stays on `main`
-and its test runs with the switch on, so nothing drifts. Once the permission
-is approved: set `LAMPS = true`, `pnpm build && pnpm test`, add a changelog
-line, cut a minor release and submit it.
+The App Store reviews an app whose manifest asks for the `lamps` permission
+before it publishes it. If that review ever holds a release back, !LAMPs are
+one switch, `const LAMPS` at the top of `tools/bundle.mjs` (on since 0.8.1;
+0.8.0 shipped with it off). Off, the manifest leaves the permission out,
+`build_info.lua` carries `lamps = false`, and the game neither awards !LAMPs
+nor mentions them. The !LAMPs code stays on `main` either way and its test
+runs with the switch on, so nothing drifts. To flip it: change the line,
+`pnpm build && pnpm test`, add a changelog line, cut a release and submit it.
 
 ## Installing a specific version
 

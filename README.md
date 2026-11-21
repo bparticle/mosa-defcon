@@ -25,9 +25,8 @@ a dummy), the caught go behind bars, and one of them may flick you a calling
 card: work out the room it means and be there to catch the next one in the
 act. Every day brings a new night with its own weather (a storm, a full moon,
 no moon, a gala) and the same first break-in for every janitor, a streak to
-keep, and works and bottles still to find. Recovered works can earn !LAMPs,
-the badge's own currency (a build switch, off until the permission is
-approved), and once you've worked a night the desk can call you
+keep, and works and bottles still to find. Recovered works earn !LAMPs,
+the badge's own currency, and once you've worked a night the desk can call you
 in the evening when the museum is hit again.
 
 | | | |

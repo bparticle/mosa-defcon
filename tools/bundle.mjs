@@ -29,12 +29,11 @@ const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'mosa.lock.json'), 'utf8'));
 const repo = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url ?? '';
 
-// !LAMPs, the badge's currency. The App Store holds back an app that asks for
-// the `lamps` permission until the organisers approve it, so this switch keeps
-// it out of the manifest. The game reads `lamps` from build_info.lua and,
-// when it's off, neither awards !LAMPs nor mentions them. Flip it to true
-// once the permission is approved (docs/RELEASING.md, "!LAMPs").
-const LAMPS = false;
+// !LAMPs, the badge's currency. An app that asks for the `lamps` permission
+// waits on the App Store's review; with this switch off the manifest leaves
+// it out. The game reads `lamps` from build_info.lua and, when it's off,
+// neither awards !LAMPs nor mentions them (docs/RELEASING.md, "!LAMPs").
+const LAMPS = true;
 
 const MANIFEST = {
   id: 'mosa-night-shift',
