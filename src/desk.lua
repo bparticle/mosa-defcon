@@ -129,9 +129,15 @@ function desk.scenes(ctx)
       for i, k in ipairs(kinds) do
         local x = 52 + (i - 1) * 72
         local y = cy + 24
-        if k == "statue" then g.fill_rect(x - 12, y - 4, 24, 4, ui.CAST); y = y - 4 end
-        sprites.draw("thief", k == "dodger" and "right" or "down", k == "dodger" and 1 or 0, x, y, 2)
-        if k == "swindler" then g.fill_rect(x + 10, cy + 18, 12, 5, ui.PAPER) end
+        if k == "statue" then
+          g.fill_rect(x - 13, y - 6, 26, 6, ui.CAST)
+          sprites.pose("statue", x, y - 6, 2)
+        else sprites.draw("thief", k == "dodger" and "right" or "down", k == "dodger" and 1 or 0, x, y, 2) end
+        if k == "swindler" then
+          -- The dummy at their feet, rolled up like the one they drop.
+          g.fill_rect(x + 10, cy + 18, 14, 5, ui.PAPER)
+          g.fill_rect(x + 10, cy + 18, 3, 5, ui.MUTED); g.fill_rect(x + 21, cy + 18, 3, 5, ui.MUTED)
+        end
         g.text_center(caper.NAME[k]:sub(5), x, cy + 32, ui.MUTED)
       end
     elseif page == 4 then

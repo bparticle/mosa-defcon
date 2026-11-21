@@ -37,6 +37,11 @@ characters, the nights have weather, and the caught leave calling cards.
   LEDs run a chase in its colour. A thief who gets away with the bar almost
   full: SO CLOSE.
 - How to play has a page on the thieves.
+- Thieves have real poses in the sprite sheet: hands up, reaching for a frame
+  from behind, and the statue's pose (one arm raised, a hand on the hip). The
+  footage and caught-in-the-act no longer paint raised arms over a sprite
+  that still has its own at its sides. Caught in the act, the thief springs
+  back from the wall before putting their hands up.
 
 - `pnpm build:web`: a static browser build of the app and its host
   (`dist/web/night-shift-<version>-<hash>/`), which the museum pins and serves

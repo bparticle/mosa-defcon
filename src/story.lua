@@ -117,7 +117,6 @@ function story.scenes(ctx)
   local POOL = g.color(54, 53, 50)
   local FLOOR_C, FLOOR_L = g.color(22, 22, 21), g.color(30, 29, 28)
   local SCAN = g.color(0, 0, 0)
-  local SKIN, SLEEVE = g.color(226, 182, 142), g.color(40, 40, 46)
 
   function Briefing.new(plan)
     local s = setmetatable({ plan = plan, t = 0, shown = 0, fresh = true }, Briefing)
@@ -176,12 +175,9 @@ function story.scenes(ctx)
     end
     g.fill_rect(FX - 10, fy + fh + 4, 20, 5, ui.CAST)
     if x then
-      if T >= REACH and T < LIFT then
-        -- Reaching up: two sleeves to the frame.
-        g.fill_rect(x - 9, FEET - 72, 5, 26, SLEEVE); g.fill_rect(x + 4, FEET - 72, 5, 26, SLEEVE)
-        g.fill_rect(x - 9, FEET - 76, 5, 4, SKIN); g.fill_rect(x + 4, FEET - 76, 5, 4, SKIN)
-      end
-      sprites.draw("thief", face, step, x, FEET, 3)
+      -- Reaching up, both hands on the frame; otherwise as they walk.
+      if T >= REACH and T < LIFT then sprites.pose("reach", x, FEET, 3)
+      else sprites.draw("thief", face, step, x, FEET, 3) end
       if T >= LIFT then
         -- The loot, under an arm, frame and all.
         local lx = x + (face == "right" and 6 or -2)

@@ -882,16 +882,20 @@ function Room:draw(px, py, fx, fy, t, walk)
       local stride = (th.step * 3) // 1 % 4
       local tface = sprites.facing(th.fx, th.fy)
       if th.kind == "statue" and th.lit_t >= POSE then
-        -- Posing as a sculpture, on a plinth that isn't there by day.
-        g.fill_rect(sx - 7, sy - 2, 14, 4, FACE_L)
-        g.fill_rect(sx - 7, sy - 2, 14, 1, WALL_L)
-        sy, stride, tface = sy - 2, 0, "down"
+        -- Posing as a sculpture, on a plinth that isn't there by day, the
+        -- loot propped against it like a label.
+        g.fill_rect(sx - 8, sy - 3, 16, 5, FACE_L)
+        g.fill_rect(sx - 8, sy - 3, 16, 1, WALL_L)
+        g.rect(sx + 9, sy - 5, 6, 7, ui.PAPER)
+        g.fill_rect(sx + 10, sy - 4, 4, 5, th.work.tint)
+        sprites.pose("statue", sx, sy - 3)
+      else
+        sprites.draw("thief", tface, stride == 1 and 1 or (stride == 3 and 2 or 0), sx, sy)
+        -- The loot: the stolen work, frame and all, under an arm.
+        local lx = sx + (tface == "left" and -9 or 4)
+        g.rect(lx, sy - 11, 6, 7, ui.PAPER)
+        g.fill_rect(lx + 1, sy - 10, 4, 5, th.work.tint)
       end
-      sprites.draw("thief", tface, stride == 1 and 1 or (stride == 3 and 2 or 0), sx, sy)
-      -- The loot: the stolen work, frame and all, under an arm.
-      local lx = sx + (tface == "left" and -9 or 4)
-      g.rect(lx, sy - 11, 6, 7, ui.PAPER)
-      g.fill_rect(lx + 1, sy - 10, 4, 5, th.work.tint)
       if th.alert then
         g.fill_rect(sx - 3, sy - 31, 7, 11, ui.INK)
         g.text("!", sx - 2, sy - 29, ui.BG)

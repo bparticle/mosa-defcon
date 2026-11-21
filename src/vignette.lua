@@ -23,7 +23,6 @@ local vignette = {}
 
 local BAR, RAIL = g.color(150, 146, 140), g.color(78, 76, 72)
 local PLINTH, PLINTH_TOP = g.color(160, 157, 150), g.color(228, 224, 215)
-local SKIN, SLEEVE = g.color(226, 182, 142), g.color(40, 40, 46)
 local BENCH = g.color(58, 56, 52)
 local SCAN = g.color(0, 0, 0)
 
@@ -35,8 +34,8 @@ local function inmate(kind, x, y, t, s, i)
     -- Still posing, out of habit, on a plinth of their own.
     g.fill_rect(x - 6 * s, y - 3 * s, 12 * s, 3 * s, PLINTH)
     g.fill_rect(x - 6 * s, y - 3 * s, 12 * s, s, PLINTH_TOP)
-    y = y - 3 * s
-    face = (i % 2 == 0) and "left" or "right"
+    sprites.pose("statue", x, y - 3 * s, s, i % 2 == 0)
+    return
   elseif kind == "dodger" then
     -- Pacing.
     local k = math.sin(t * 2.2 + i)
@@ -208,7 +207,8 @@ function vignette.scenes(ctx)
     local pw, ph = ui.size(work)
     local k = math.max(1, math.min(48 // pw, 48 // ph))
     local fw, fh = pw * k + 6, ph * k + 6
-    local fx, fy = TX - fw // 2, 30
+    -- Hung low enough that the reaching hands are on the frame.
+    local fx, fy = TX - fw // 2, FLOOR - 48 - fh
     if T < CLICK then
       -- The dark: the frame's edge, and two eyes under it.
       g.rect(fx, fy, fw, fh, ui.DIM)
@@ -230,25 +230,19 @@ function vignette.scenes(ctx)
     g.fill_rect(fx, fy, fw, fh, ui.PAPER)
     ui.thumb(work, fx + 3, fy + 3, k)
     g.fill_rect(TX - 1, fy - 4, 2, 3, ui.MUTED)
-    local face = T < SPOT and "up" or "down"
-    if T < HANDS then
-      if T < SPOT then
-        -- Reaching up: two sleeves to the frame.
-        g.fill_rect(TX - 9, FLOOR - 72, 5, 26, SLEEVE); g.fill_rect(TX + 4, FLOOR - 72, 5, 26, SLEEVE)
-        g.fill_rect(TX - 9, FLOOR - 76, 5, 4, SKIN); g.fill_rect(TX + 4, FLOOR - 76, 5, 4, SKIN)
-      end
-    else
-      -- Hands up.
-      g.fill_rect(TX - 17, FLOOR - 64, 5, 34, SLEEVE); g.fill_rect(TX + 12, FLOOR - 64, 5, 34, SLEEVE)
-      g.fill_rect(TX - 17, FLOOR - 68, 5, 4, SKIN); g.fill_rect(TX + 12, FLOOR - 68, 5, 4, SKIN)
-    end
-    sprites.draw("thief", face, 0, TX, FLOOR, 3)
+    -- Reaching for it; in the light they spring back from the wall, turn,
+    -- and put their hands up, the work left where it hangs.
+    local back = T < SPOT and 0 or math.floor(48 * math.min(1, (T - SPOT) / 0.15))
+    local tx = TX + back
+    if T < SPOT then sprites.pose("reach", tx, FLOOR, 3)
+    elseif T < HANDS then sprites.draw("thief", "down", 0, tx, FLOOR, 3)
+    else sprites.pose("hands", tx, FLOOR, 3) end
     if self.kind == "statue" and T >= SPOT then
-      g.text("(not a sculpture)", TX - 50, FLOOR + 6, ui.MUTED)
+      g.text_center("(not a sculpture)", tx, FLOOR + 6, ui.MUTED)
     end
     if T >= SPOT and T < WORDS + 0.8 then
-      g.fill_rect(TX + 22, FLOOR - 62, 9, 14, ui.INK)
-      g.text("!", TX + 24, FLOOR - 59, ui.BG)
+      g.fill_rect(tx + 24, FLOOR - 62, 9, 14, ui.INK)
+      g.text("!", tx + 26, FLOOR - 59, ui.BG)
     end
     sprites.draw("janitor", "right", 0, JX, FLOOR, 3)
     g.fill_rect(lx, ly, 14, 6, sprites.TORCH)

@@ -198,6 +198,89 @@ function sprites.draw(who, face, step, x, y, scale)
   end
 end
 
+-- Poses with the arms off the body, so nothing is painted over a sprite that
+-- still has its arms at its sides. 12 wide (an arm and its outline either side
+-- of the head) and two rows taller (the hands, just over the head). Sleeves
+-- are the jersey's black with a stripe at the elbow and the cuff, so a raised
+-- arm reads as an arm and not a ladder. The front feet, standing.
+--   hands   caught: both hands up, facing you
+--   reach   from behind, both arms up at a frame on the wall
+--   statue  posing as a sculpture: one arm raised, a hand on the hip
+local POSES = {
+  hands = {
+    ".k........k.",
+    "ksk......ksk",
+    "kSk.kkkk.kSk",
+    "kwkkddddkkwk",
+    "kdkddddddkdk",
+    "kdkddddddkdk",
+    "kdkmwmmwmkdk",
+    "kwksssssskwk",
+    "kdkkSSSSkkdk",
+    "kdkwwwwwwkdk",
+    "kddddddddddk",
+    ".kwwwwwwwwk.",
+    ".kddddddddk.",
+    "..kwwwwwwk..",
+    "..kppppppk..",
+    "..kppkkppk..",
+  },
+  reach = {
+    ".k........k.",
+    "ksk......ksk",
+    "kSk.kkkk.kSk",
+    "kwkkddddkkwk",
+    "kdkddddddkdk",
+    "kdkddddddkdk",
+    "kdkddddddkdk",
+    "kwkmmmmmmkwk",
+    "kdkkSSSSkkdk",
+    "kdkwwwwwwkdk",
+    "kddddddddddk",
+    ".kwwwwwwwwk.",
+    ".kddddddddk.",
+    "..kwwwwwwk..",
+    "..kppppppk..",
+    "..kppkkppk..",
+  },
+  statue = {
+    ".k..........",
+    "ksk.........",
+    "kSk.kkkk....",
+    "kwkkddddk...",
+    "kdkddddddk..",
+    "kdkddddddk..",
+    "kdkmwmmwmk..",
+    "kwkssssssk..",
+    "kdkkSSSSk...",
+    "kdkwwwwwwk..",
+    "kddddddddddk",
+    ".kwwwwwwwwdk",
+    ".kddddddddsk",
+    "..kwwwwwwk..",
+    "..kppppppk..",
+    "..kppkkppk..",
+  },
+}
+
+--- Draw a thief's pose (see POSES) with the feet at (x, y). `flip` mirrors it.
+function sprites.pose(name, x, y, scale, flip)
+  scale = scale or 1
+  local rows = POSES[name]
+  local runs = cache[name]
+  if not runs then
+    local f = FEET.front[1]
+    runs = compile(rows, { "." .. f[1] .. ".", "." .. f[2] .. "." }, "p")
+    cache[name] = runs
+  end
+  local ox, oy = math.floor(x) - 6 * scale, math.floor(y) - (#rows + 2) * scale
+  for i = 1, #runs, 4 do
+    local rx = runs[i]
+    if flip then rx = 12 - rx - runs[i + 2] end
+    g.hline(ox + rx * scale, oy + runs[i + 1] * scale, runs[i + 2] * scale, runs[i + 3], scale)
+  end
+end
+
 --- Which way a direction vector faces.
 function sprites.facing(fx, fy)
   if math.abs(fx) > math.abs(fy) then return fx < 0 and "left" or "right" end
