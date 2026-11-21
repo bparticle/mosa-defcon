@@ -142,5 +142,28 @@ says WALK THERE and SELECT calls `cabinet.open(url)`, which takes the visitor to
 the work in the museum. The Lanyard shows its art large instead of a QR. On a
 badge `cabinet` is nil and nothing changes.
 
+### What the cabinet leaves out
+
+The app never asks which host it is on; it asks whether a capability is there.
+That keeps the two environments apart and the game the same. The cabinet has no
+mesh (no janitors nearby), no background service and no !LAMPs.
+
+!LAMPs have two independent gates, and `has_lamps()` in `src/main.lua` needs both:
+
+- the **build switch** (`LAMPS` in `tools/bundle.mjs`, stamped into
+  `build_info.lua`): whether the badge package asks the App Store for the
+  `lamps` permission at all ([RELEASING.md](RELEASING.md#lamps));
+- the **host**: `createCabinet` passes `lamps: false` to `host-core`, which then
+  defines no `lamps` global, as on a badge without the permission. The default
+  host (tests, `pnpm play`) plays the server instead: its stand-in pays out
+  every award.
+
+Without both, the game neither awards !LAMPs nor mentions them (How to play's
+last page and the desk's label). Two tests pin it: "a host without !LAMPs (the
+arcade cabinet) never asks for an award" and "how to play mentions !LAMPs only
+on a host that has them". A new feature that needs something only the badge has
+gets the same treatment: the app checks for the capability, and the cabinet host
+leaves it out.
+
 `mosa_debug` (end of `main.lua`) is a small global test seam: scene state,
 teleporting to a bottle, travelling synchronously. Harmless on hardware.

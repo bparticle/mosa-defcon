@@ -626,6 +626,40 @@ test('a host without !LAMPs (the arcade cabinet) never asks for an award', async
   assert.deepEqual(b.errors, []);
 });
 
+// What How to play draws on its last page, caught as the desk's paragraph and tracked label
+// are drawn: the page that tells how to earn !LAMPs, where the host has them.
+async function lastHowToPage(b) {
+  await b.frames(80);
+  await b.press('down'); await b.press('a'); await b.frames(2);
+  assert.match(state(b), /scene=howto/);
+  b.lua('texts = {}; local kit = require("kit"); local para, tracked = kit.paragraph, kit.tracked;'
+    + ' kit.paragraph = function(s, ...) texts[#texts + 1] = tostring(s); return para(s, ...) end;'
+    + ' kit.tracked = function(s, ...) texts[#texts + 1] = tostring(s); return tracked(s, ...) end');
+  for (let i = 0; i < 4; i++) { await b.press('right'); await b.frames(1); }
+  b.lua('texts = {}');
+  await b.press('right'); await b.frames(2); // the sixth and last page
+  return String(b.lua('return table.concat(texts, " | ")'));
+}
+
+// The other half of the cabinet's fix: the build has !LAMPs in both runs, so the host decides
+// whether How to play mentions them. The badge says how to earn them; the cabinet says nothing.
+test('how to play mentions !LAMPs only on a host that has them', async () => {
+  const badge = await bootApp();
+  badge.lua('require("build_info").lamps = true');
+  const on = await lastHowToPage(badge);
+  assert.match(on, /EVERY NIGHT/, 'the last page is the one drawn');
+  assert.match(on, /!LAMPS/, 'its picture is labelled !LAMPS');
+  assert.match(on, /earn !LAMPs/, 'and its text says how to earn them');
+
+  const cabinet = await bootApp({ cabinet: { open: () => {} }, lamps: false });
+  cabinet.lua('require("build_info").lamps = true');
+  const off = await lastHowToPage(cabinet);
+  assert.match(off, /EVERY NIGHT/, 'the last page is the one drawn');
+  assert.match(off, /EVERY BOTTLE/, 'its picture is labelled for the bottles instead');
+  assert.doesNotMatch(off, /lamps/i, 'and nothing on it mentions !LAMPs');
+  assert.deepEqual([...badge.errors, ...cabinet.errors], []);
+});
+
 test('how to play turns its pages', async () => {
   const b = await bootApp();
   await b.frames(80);
