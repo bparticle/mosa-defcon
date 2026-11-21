@@ -5,6 +5,11 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-21
+
+Every work in the museum, one scan away. Resubmitted with the same request for
+a daily !LAMPs allowance (50 a player), still waiting on 0.6.1.
+
 ### Changed
 
 - Every work's QR now opens that work in the museum: `mosa.center/at/work/<id>`
@@ -17,8 +22,7 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 - No QR leads to `mosa.center/at/defcon` any more, a link the museum never
   had. The Lanyard, About and shift-report QRs open the Janitor Room
-  (`/at/bp26`), and a work without a page of its own opens its room's link,
-  else the museum.
+  (`/at/bp26`).
 
 ## [0.6.1] - 2026-11-20
 
@@ -255,7 +259,8 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.6.1...HEAD
+[Unreleased]: ../../compare/v0.7.0...HEAD
+[0.7.0]: ../../compare/v0.6.1...v0.7.0
 [0.6.1]: ../../compare/v0.6.0...v0.6.1
 [0.6.0]: ../../compare/v0.5.0...v0.6.0
 [0.5.0]: ../../compare/v0.4.2...v0.5.0

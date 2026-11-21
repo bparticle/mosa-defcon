@@ -1,6 +1,6 @@
 {
   "name": "mosa-badge",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "description": "M.O.S.A. on the Solana badge: Night Shift, a top-down janitor's walk through the Museum of Sirius Art that hands visitors into the HD museum.",
   "type": "module",
