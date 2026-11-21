@@ -5,7 +5,17 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
-## [0.8.1] - 2026-11-21
+## [0.8.2] - 2026-11-21
+
+### Fixed
+
+- The M.O.S.A. arcade cabinet no longer awards or mentions !LAMPs. Its
+  browser host kept the test host's stand-in for the server, which paid out
+  every award, so the cabinet showed "+3 !LAMPS" for !LAMPs that exist
+  nowhere (since 0.7.0). The browser host now has no `lamps` at all, and the
+  app asks whether the host has !LAMPs, not only whether the build does,
+  before awarding them or telling how to earn them. On a badge nothing
+  changes.
 
 ### Changed
 

@@ -608,6 +608,24 @@ test('recovered works earn !LAMPs; an owner without X is told how', async () => 
   assert.deepEqual([...b.errors, ...c.errors], []);
 });
 
+// The arcade cabinet's host passes lamps: false (tools/web/host-browser.mjs): the badge's
+// allowance is the badge's, so a cabinet never awards !LAMPs, even in a build that has them.
+test('a host without !LAMPs (the arcade cabinet) never asks for an award', async () => {
+  const b = await bootApp({ cabinet: { open: () => {} }, lamps: false });
+  b.lua('require("build_info").lamps = true');
+  assert.equal(b.lua('return lamps'), null, 'no lamps global');
+  await clockIn(b);
+  const id = String(b.lua('return mosa_debug.heist()')).split(',')[0];
+  b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
+  b.lua('mosa_debug.face_thief()');
+  for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+  assert.match(state(b), /scene=artcard/);
+  assert.equal(String(b.lua('return __lamps_log()')), '', 'no award was asked for');
+  await b.press('b'); await b.frames(3);
+  assert.match(nightOf(b), /lamps=0/);
+  assert.deepEqual(b.errors, []);
+});
+
 test('how to play turns its pages', async () => {
   const b = await bootApp();
   await b.frames(80);

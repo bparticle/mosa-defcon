@@ -331,10 +331,12 @@ end
 export class SolanaOS {
   /**
    * @param {{ read: (rel: string) => string | undefined, storage?: string, storageJson?: string, seed?: number,
-   *   wasmUrl?: string, cabinet?: { open: (url: string) => void } }} options
+   *   wasmUrl?: string, cabinet?: { open: (url: string) => void }, lamps?: boolean }} options
    *   read: the app's files by relative path (main.lua, world.lua, data/mosa_data.lua…);
    *   storage: a previous run's storageDump(), or storageJson: its storageJson(); wasmUrl: where glue.wasm is served (a browser);
-   *   cabinet: the arcade cabinet's capability, `cabinet.open(url)` in the app.
+   *   cabinet: the arcade cabinet's capability, `cabinet.open(url)` in the app;
+   *   lamps: false for a host with no !LAMPs (the cabinet): no `lamps` global, as on a badge
+   *   without the permission. The default plays the server's awards (tests, `pnpm play`).
    */
   constructor(options = {}) {
     this.options = options;
@@ -394,6 +396,7 @@ export class SolanaOS {
     g.set('__cv_clear', (cv, c) => { const o = self.objects.get(cv.id); if (o) { self.revision++; self.px += o.w * o.h / 16; o.px.fill(colour(c)); } });
     g.set('__cv_get', (id, x, y) => { const o = self.objects.get(id); return o && x >= 0 && y >= 0 && x < o.w && y < o.h ? o.px[y * o.w + x] : -1; });
     this.engine.doStringSync(PRELUDE);
+    if (this.options.lamps === false) this.engine.doStringSync('lamps = nil');
     if (this.options.cabinet) {
       const open = this.options.cabinet.open;
       // Never re-enter the page from inside a Lua callback: the visit begins after it returns.

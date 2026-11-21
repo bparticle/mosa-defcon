@@ -13,7 +13,8 @@
 //   - CANCEL on the title, which leaves the app on a badge, starts it again: the
 //     cabinet is never switched off by the game
 //
-// What it does not: no mesh (no janitors nearby), no !LAMPs, no background service.
+// What it does not: no mesh (no janitors nearby), no !LAMPs (no `lamps` global: the app
+// neither awards nor mentions them), no background service.
 // Night Shift runs without them, as it does on a badge whose owner has none.
 import { SolanaOS, WIDTH as APP_W, HEIGHT as APP_H } from '../lib/host-core.mjs';
 
@@ -66,6 +67,8 @@ export async function createCabinet(options) {
       seed: options.seed ?? (Date.now() >>> 0),
       wasmUrl: new URL('glue.wasm', base).href,
       cabinet: { open: (url) => options.onOpen?.(url) },
+      // The badge's allowance is the badge's: the cabinet has no !LAMPs to give or mention.
+      lamps: false,
     }).launch();
     painted = -1; errorsSeen = 0; held.clear();
   }
