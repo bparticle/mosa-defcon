@@ -428,7 +428,10 @@ test('the build is a package Solana OS accepts', () => {
   const manifest = JSON.parse(fs.readFileSync(new URL('../apps/mosa/app.json', import.meta.url), 'utf8'));
   assert.match(manifest.id, /^[a-z0-9-]{3,24}$/);
   assert.ok(manifest.name.length <= 20);
-  assert.deepEqual([...manifest.permissions].sort(), ['background', 'lamps', 'led', 'mesh']);
+  // !LAMPs are a build switch (tools/bundle.mjs): the permission is asked for
+  // exactly when build_info says the game awards them.
+  const lampsOn = /lamps = true/.test(fs.readFileSync(new URL('../apps/mosa/build_info.lua', import.meta.url), 'utf8'));
+  assert.deepEqual([...manifest.permissions].sort(), ['background', ...(lampsOn ? ['lamps'] : []), 'led', 'mesh']);
   const main = fs.statSync(new URL('../apps/mosa/main.lua', import.meta.url)).size;
   assert.ok(main <= 64 * 1024, `main.lua ${main} bytes`);
 });
@@ -566,8 +569,24 @@ test('nights count by the day: a streak grows, and lapses when a day is missed',
   assert.equal(run('return R.state.streak .. "," .. R.state.best_streak .. "," .. R.state.nights'), '1,3,4');
 });
 
+test('a build without !LAMPs never asks for an award', async () => {
+  const b = await bootApp();
+  b.lua('require("build_info").lamps = false');
+  await clockIn(b);
+  const id = String(b.lua('return mosa_debug.heist()')).split(',')[0];
+  b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
+  b.lua('mosa_debug.face_thief()');
+  for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+  assert.equal(String(b.lua('return __lamps_log()')), '', 'no award was asked for');
+  await b.press('b'); await b.frames(3);
+  assert.match(nightOf(b), /lamps=0/);
+  assert.deepEqual(b.errors, []);
+});
+
+// The switch on (tools/bundle.mjs LAMPS = true), whatever this build ships with.
 test('recovered works earn !LAMPs; an owner without X is told how', async () => {
   const b = await bootApp();
+  b.lua('require("build_info").lamps = true');
   await clockIn(b);
   const id = String(b.lua('return mosa_debug.heist()')).split(',')[0];
   b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
@@ -578,7 +597,7 @@ test('recovered works earn !LAMPs; an owner without X is told how', async () => 
   assert.match(nightOf(b), /lamps=3/, 'the award comes back and is counted for the report');
 
   const c = await bootApp();
-  c.lua('__lamps_mode = "needsX"');
+  c.lua('require("build_info").lamps = true; __lamps_mode = "needsX"');
   await clockIn(c);
   const id2 = String(c.lua('return mosa_debug.heist()')).split(',')[0];
   c.lua(`mosa_debug.travel("${id2}")`); await c.frames(2);

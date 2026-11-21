@@ -29,6 +29,13 @@ const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'mosa.lock.json'), 'utf8'));
 const repo = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url ?? '';
 
+// !LAMPs, the badge's currency. The App Store holds back an app that asks for
+// the `lamps` permission until the organisers approve it, so this switch keeps
+// it out of the manifest. The game reads `lamps` from build_info.lua and,
+// when it's off, neither awards !LAMPs nor mentions them. Flip it to true
+// once the permission is approved (docs/RELEASING.md, "!LAMPs").
+const LAMPS = false;
+
 const MANIFEST = {
   id: 'mosa-night-shift',
   name: 'M.O.S.A. Night Shift',
@@ -38,7 +45,7 @@ const MANIFEST = {
   icon: 'eye',
   accent: '7EE8A8',
   category: 'games',
-  permissions: ['led', 'mesh', 'lamps', 'background'],
+  permissions: ['led', 'mesh', ...(LAMPS ? ['lamps'] : []), 'background'],
 };
 
 function sources() {
@@ -63,7 +70,7 @@ function build() {
   }
   files['build_info.lua'] =
     `-- Written by tools/bundle.mjs. v${pkg.version}, MOSA ${lock.mosa.describe}, data ${lock.data}.\n` +
-    `return { version = ${JSON.stringify(pkg.version)}, mosa = ${JSON.stringify(lock.mosa.commit.slice(0, 12))}, data = ${JSON.stringify(lock.data)}, repo = ${JSON.stringify(repo.replace(/^git\+/, '').replace(/\.git$/, ''))} }\n`;
+    `return { version = ${JSON.stringify(pkg.version)}, mosa = ${JSON.stringify(lock.mosa.commit.slice(0, 12))}, data = ${JSON.stringify(lock.data)}, repo = ${JSON.stringify(repo.replace(/^git\+/, '').replace(/\.git$/, ''))}, lamps = ${LAMPS} }\n`;
   files['app.json'] = JSON.stringify(MANIFEST, null, 2) + '\n';
   return Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)).map(([rel, text]) => [`${OUT}/${rel}`, text]));
 }
@@ -95,7 +102,7 @@ if (problems.length) {
   console.error(`[build] ${problems.join('; ')}`);
   process.exit(1);
 }
-const summary = `main.lua ${(main / 1024).toFixed(1)} of ${MAIN_LIMIT / 1024} KB, ${Object.keys(outputs).length - 2} modules ${(total / 1024).toFixed(1)} KB, v${pkg.version}`;
+const summary = `main.lua ${(main / 1024).toFixed(1)} of ${MAIN_LIMIT / 1024} KB, ${Object.keys(outputs).length - 2} modules ${(total / 1024).toFixed(1)} KB, v${pkg.version}${LAMPS ? '' : ', without !LAMPs'}`;
 
 const existing = fs.existsSync(path.join(ROOT, OUT))
   ? fs.readdirSync(path.join(ROOT, OUT), { recursive: true, withFileTypes: true })

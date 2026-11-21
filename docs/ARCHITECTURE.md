@@ -21,8 +21,9 @@ and 1 MB in total, with paths in `[a-z0-9_-./]`. `tools/bundle.mjs` copies
 `build_info.lua` and `app.json`, checks every limit, and removes any stale
 files. `pnpm check` fails when the committed package doesn't match `src/`.
 
-The manifest asks for four permissions: `led`, `mesh`, `lamps` (award !LAMPs
-for recovered works) and `background` (the desk's evening call, `service.lua`).
+The manifest asks for `led`, `mesh` and `background` (the desk's evening call,
+`service.lua`), and `lamps` (award !LAMPs for recovered works) when the build's
+!LAMPs switch is on (`LAMPS` in `tools/bundle.mjs`; see [RELEASING.md](RELEASING.md)).
 
 ## Lua modules (`src/`)
 

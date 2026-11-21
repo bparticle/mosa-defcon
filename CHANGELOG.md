@@ -52,6 +52,10 @@ characters, the nights have weather, and the caught leave calling cards.
 
 ### Changed
 
+- The app no longer asks for the `lamps` permission, so it can go through the
+  App Store while !LAMPs wait for approval. Nothing awards or mentions !LAMPs
+  in this build; they come back with a one-line switch (`LAMPS` in
+  `tools/bundle.mjs`) once the permission is approved.
 - The headless Solana OS is split into a core with no Node dependencies, the
   Node host the tests use, and a browser host
   ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#three-hosts-one-core)).

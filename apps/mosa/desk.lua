@@ -101,8 +101,10 @@ function desk.scenes(ctx)
     { "THE THIEVES", "Four kinds get in. The creep runs from the light. The statue freezes in it and poses: look away, then back. The dodger weaves: back them into a wall. The swindler drops a fake: keep your light on them." },
     { "THE DESK", "Clear a break-in and the desk radios the next, sized to how you're doing. One of the caught may leave a calling card: work out the room it means, and be in it when they come." },
     { "TRAVEL", "The map takes you to any room you've walked before, in a blink. Each trip costs twenty minutes of the night. Doors are free." },
-    { "EVERY NIGHT", "A new night every day, with its own weather: a storm, a full moon, no moon at all. Keep a streak, find every bottle and every work, and earn !LAMPs for what you recover (link X on the badge site)." },
+    { "EVERY NIGHT", "A new night every day, with its own weather: a storm, a full moon, no moon at all. Keep a streak, and find every bottle and every work in the museum." },
   }
+  -- The last page, in a build that awards !LAMPs.
+  local LAMPS_PAGE = "A new night every day, with its own weather: a storm, a full moon, no moon at all. Keep a streak, find every bottle and every work, and earn !LAMPs for what you recover (link X on the badge site)."
   function HowTo.new() return setmetatable({ page = 1 }, HowTo) end
   local function picture(page)
     local cx, cy = 160, 76
@@ -166,7 +168,8 @@ function desk.scenes(ctx)
         ui.thumb(p, x, cy - 20, 1, not have and ui.DIM or nil)
         x = x + 23
       end
-      ui.tracked("!LAMPS", cx - 22, cy + 20, ui.INK, 1, 2)
+      if ctx.lamps() then ui.tracked("!LAMPS", cx - 22, cy + 20, ui.INK, 1, 2)
+      else ui.tracked("EVERY BOTTLE", cx - 46, cy + 20, ui.INK, 1, 2) end
     end
   end
   function HowTo:draw()
@@ -175,7 +178,7 @@ function desk.scenes(ctx)
     picture(self.page)
     local p = PAGES[self.page]
     ui.tracked(p[1], 16, 122, ui.INK, 1, 3)
-    ui.paragraph(p[2], 16, 138, 288, ui.MUTED, 1, 11)
+    ui.paragraph(self.page == #PAGES and ctx.lamps() and LAMPS_PAGE or p[2], 16, 138, 288, ui.MUTED, 1, 11)
     ui.hints({ "d-pad", "turn the page", "b", "back" })
   end
   function HowTo:button(key)

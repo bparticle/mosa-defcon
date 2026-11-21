@@ -10,7 +10,6 @@
   "permissions": [
     "led",
     "mesh",
-    "lamps",
     "background"
   ]
 }

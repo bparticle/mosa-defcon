@@ -6,7 +6,7 @@ Solana OS 2.4 or later). `pnpm build` writes the package to `apps/mosa/`:
 ```
 apps/mosa/
   main.lua          the entry point
-  app.json          id mosa-night-shift, permissions led + mesh
+  app.json          id mosa-night-shift, permissions led, mesh, background (+ lamps)
   *.lua, data/      the modules main.lua requires
 ```
 

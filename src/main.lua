@@ -198,9 +198,10 @@ end
 
 -- !LAMPs: the badge's own currency. The app can award them within the
 -- daily cap the organisers set it; only owners who linked X earn them.
+-- A build without them (BUILD.lamps false: no permission asked) never calls.
 local needs_x = false
 local function earn(game, amount, why)
-  if not (lamps and lamps.award) then return end
+  if not (BUILD.lamps and lamps and lamps.award) then return end
   lamps.award(amount, why, function(ok, r)
     if not ok or type(r) ~= "table" then return end
     if (r.awarded or 0) > 0 then
@@ -214,7 +215,7 @@ Intro, Briefing = story.scenes({ top = top, push = push, pop = pop, flash = flas
   works_by_idx = works_by_idx, rooms_by_id = rooms_by_id, start = function(plan) push(Game.new(plan)) end, weather = weather })
 local Holding, CallingCard, InTheAct = vignette.scenes({ top = top, push = push, pop = pop, flash = flash })
 Dawn, HowTo = desk.scenes({ DATA = DATA, push = push, pop = pop, invalidate = invalidate, works_by_idx = works_by_idx,
-  needs_x = function() return needs_x end,
+  needs_x = function() return needs_x end, lamps = function() return BUILD.lamps end,
   report_code = function()
     return Code.new(report_url(), "SHIFT REPORT", record.found_count() .. " of " .. #DATA.pieces .. " bottles",
       WALK and "Carry your night shift into M.O.S.A." or "Scan to carry your night shift into M.O.S.A.")

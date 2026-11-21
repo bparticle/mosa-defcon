@@ -136,8 +136,10 @@ SELECT shows the shift report's QR; CANCEL goes back to the title.
 
 ## !LAMPs
 
-!LAMPs are the badge's own currency (`lamps.award`, permission `lamps`). The
-app awards:
+!LAMPs are the badge's own currency (`lamps.award`, permission `lamps`). They
+are a build switch (`LAMPS` in `tools/bundle.mjs`): with it off, the manifest
+doesn't ask for the permission, the game never calls `lamps.award`, and how to
+play doesn't mention them. With it on, the app awards:
 
 | For | !LAMPs |
 | --- | --- |

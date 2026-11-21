@@ -44,6 +44,17 @@ git push --follow-tags
 commit as the tag. CI (`pnpm check`) fails any commit whose built files don't
 match `src/`.
 
+## !LAMPs
+
+The App Store holds back an app whose manifest asks for the `lamps`
+permission until the organisers approve it. So !LAMPs are one switch,
+`const LAMPS` at the top of `tools/bundle.mjs`, off for now: the manifest
+leaves the permission out, `build_info.lua` carries `lamps = false`, and the
+game neither awards !LAMPs nor mentions them. The !LAMPs code stays on `main`
+and its test runs with the switch on, so nothing drifts. Once the permission
+is approved: set `LAMPS = true`, `pnpm build && pnpm test`, add a changelog
+line, cut a minor release and submit it.
+
 ## Installing a specific version
 
 From the App Store, a badge gets the version last submitted. To put an exact
