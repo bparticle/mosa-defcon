@@ -16,9 +16,11 @@
     "preview": "node tools/preview.mjs",
     "version": "node tools/bundle.mjs && git add apps CHANGELOG.md",
     "pixel": "node tools/pixel.mjs",
-    "play": "node tools/play/server.mjs"
+    "play": "node tools/play/server.mjs",
+    "build:web": "node tools/build-web.mjs"
   },
   "devDependencies": {
+    "esbuild": "0.25.12",
     "pngjs": "^7.0.0",
     "sharp": "^0.34.4",
     "wasmoon": "^1.16.0"

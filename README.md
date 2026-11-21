@@ -112,13 +112,14 @@ pnpm build      # src/ → apps/mosa/, the Solana OS app package
 pnpm test       # plays the built app on the headless Solana OS
 pnpm preview    # screenshots of every screen → docs/screens/
 pnpm play       # play it in a browser on the headless Solana OS
+pnpm build:web  # a static browser build for the M.O.S.A. arcade cabinet → dist/web/
 pnpm pixel      # bottle pixel art: sheet | starter | import | check
 ```
 
 ```
 src/              the Lua app (modules; data/mosa_data.lua is generated)
 apps/mosa/        BUILT: the app package (main.lua, app.json, modules) Solana OS installs
-tools/            sync-mosa.mjs, bundle.mjs, preview.mjs, pixel.mjs, play/, lib/ (host, pixel, shift decoder)
+tools/            sync-mosa.mjs, bundle.mjs, build-web.mjs, preview.mjs, pixel.mjs, play/, web/ (browser host), lib/ (host core + Node host, pixel, shift decoder)
 art/pixel/        hand-made 16x24 bottle sprites (optional per bottle)
 test/             app playthroughs on the headless Solana OS
 mosa.lock.json    what the data was generated from; the append-only index registry

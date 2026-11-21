@@ -6,7 +6,9 @@ api.mosa.center (public API) ─────┼─ tools/sync-mosa.mjs ─► sr
                                   │
 src/*.lua ────────────────────────┴─ tools/bundle.mjs ────► apps/mosa/   (the Solana OS app package)
                                                                  │
-tools/lib/host.mjs (headless Solana OS) ◄────────────────────────┴─► test/, tools/preview.mjs, tools/play/
+tools/lib/host.mjs (headless Solana OS) ◄────────────────────────┼─► test/, tools/preview.mjs, tools/play/
+                                                                 │
+tools/web/host-browser.mjs ◄── tools/build-web.mjs ◄─────────────┴─► dist/web/ (the M.O.S.A. arcade cabinet)
 ```
 
 ## The app package (`apps/mosa/`)
@@ -103,6 +105,39 @@ release (see [BADGE.md](BADGE.md)).
 server. Frames go to the page as RGB565 over server-sent events, and buttons
 come back as POSTs. The server also lists and serves the package at `/app/`
 with CORS headers, for loading it into the real emulator.
+
+## Three hosts, one core
+
+The headless Solana OS is split so it can also run in a browser:
+
+- `tools/lib/host-core.mjs` is the OS itself: the sandbox, the API subset, the
+  limits, the canvas. It imports nothing from Node. The app's files reach it
+  through a `read(rel)` function, storage as a Lua string or a JSON object
+  (`storageJson()`, `storageFromJson()`), and wasmoon's `glue.wasm` from a URL.
+- `tools/lib/host.mjs` is the Node adapter: it reads `apps/mosa/` from disk and
+  adds `screenshot()` (PNG). The tests, `pnpm preview` and `pnpm play` use it.
+- `tools/web/host-browser.mjs` is the browser adapter, for the arcade cabinet
+  in the M.O.S.A. Janitor Room. `createCabinet({ canvas, base, storageKey, ... })`
+  fetches the package, draws a 320x240 screen like the badge's (a 22 px status
+  strip over the app's 320x218), ticks the app in real time, keeps its storage
+  in the visitor's `localStorage`, and reports the LEDs.
+
+`pnpm build:web` (`tools/build-web.mjs`) checks the package, bundles the
+browser host with esbuild and writes a static folder:
+`dist/web/night-shift-<version>-<hash>/` (`host.js`, `glue.wasm`, `app.json`
+with every `.lua` file, and a test page, `index.html`). The hash is the
+folder's content, so an unreleased build never takes a released version's
+name. `dist/web/latest.json` names the newest. The museum copies a folder with
+its own `pnpm run arcade:sync` and pins it; nothing is served from this repo.
+
+### The cabinet capability
+
+Only the browser host defines a global `cabinet` with `cabinet.open(url)`. The
+app checks for it (`WALK` in `src/main.lua`): in the cabinet a work's QR would
+point a phone at the museum the visitor is already standing in, so SEE IT IN HD
+says WALK THERE and SELECT calls `cabinet.open(url)`, which takes the visitor to
+the work in the museum. The Lanyard shows its art large instead of a QR. On a
+badge `cabinet` is nil and nothing changes.
 
 `mosa_debug` (end of `main.lua`) is a small global test seam: scene state,
 teleporting to a bottle, travelling synchronously. Harmless on hardware.

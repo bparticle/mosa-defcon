@@ -79,6 +79,11 @@ local function flash(c, seconds)
   pulse = { r, gg, b, t + (seconds or 0.5) }
 end
 
+-- In M.O.S.A.'s arcade cabinet (the museum runs this app on a screen in a room)
+-- a QR code makes no sense: the cabinet's host defines cabinet.open(url) and
+-- takes the visitor to the link instead. On a badge it is nil.
+local WALK = cabinet ~= nil and cabinet.open ~= nil
+
 local function report_url()
   return DATA.home .. "?shift=" .. record.report_code(piece_count)
 end
@@ -203,7 +208,7 @@ Dawn, HowTo = desk.scenes({ DATA = DATA, push = push, pop = pop, invalidate = in
   needs_x = function() return needs_x end,
   report_code = function()
     return Code.new(report_url(), "SHIFT REPORT", record.found_count() .. " of " .. #DATA.pieces .. " bottles",
-      "Scan to carry your night shift into M.O.S.A.")
+      WALK and "Carry your night shift into M.O.S.A." or "Scan to carry your night shift into M.O.S.A.")
   end })
 
 -- A menu helper: items = { { label, fn }, ... }. Numbered like a catalogue;
@@ -342,16 +347,17 @@ function Lanyard:update(dt)
   self.art_t = self.art_t + dt
   if self.art_t > 4 then self.art_t = 0; self.art = self.art + 1; invalidate() end
 end
-function Lanyard:qr() return { DATA.home, 12, 14, 186 } end
+function Lanyard:qr() if WALK then return nil end return { DATA.home, 12, 14, 186 } end
 function Lanyard:draw()
   g.clear(ui.PAPER)
   local x = 206
   ui.block("MOSA", x, 26, 3, ui.PAPER_INK)
   g.fill_rect(x, 54, 100, 13, ui.PAPER_INK)
-  ui.tracked("SCAN TO ENTER", x + 3, 57, ui.PAPER, 1, 1)
+  ui.tracked(WALK and "NOW SHOWING" or "SCAN TO ENTER", x + 3, 57, ui.PAPER, 1, 1)
   g.text("The Museum of", x, 74, ui.MUTED)
   g.text("Sirius Art", x, 84, ui.MUTED)
   local p = on_show(self.art)
+  if WALK then ui.mat(p, 12, 14, 186, 186) end
   ui.mat(p, x, 94, 100, 84)
   g.text(ui.fit(p.title, 100), x, 184, ui.PAPER_INK)
   g.text(ui.fit(p.artist, 100), x, 194, ui.MUTED)
@@ -365,9 +371,18 @@ Code.__index = Code
 function Code.new(url, heading, title, body)
   return setmetatable({ url = url, heading = heading, title = title, body = body }, Code)
 end
-function Code:qr() return { self.url, 8, 8, 202 } end
+function Code:qr() if WALK then return nil end return { self.url, 8, 8, 202 } end
 function Code:draw()
   g.clear(ui.PAPER)
+  if WALK then
+    -- Where the code would be: the cabinet's own way there.
+    g.fill_rect(8, 8, 202, 202, ui.PAPER_INK)
+    ui.tracked("IN THE MUSEUM", 20, 24, ui.PAPER, 1, 2)
+    g.text("WALK", 20, 70, ui.PAPER, 4)
+    g.text("THERE", 20, 110, ui.PAPER, 4)
+    local kw = ui.key("a", 20, 186)
+    g.text("TAKE ME THERE", 20 + kw + 5, 186, ui.PAPER)
+  end
   local x, w = 216, 98
   local y = 14
   for _, l in ipairs(ui.wrap(self.heading, w, 1)) do g.text(l, x, y, ui.PAPER_INK); y = y + 10 end
@@ -387,7 +402,10 @@ function Code:draw()
   for _, l in ipairs(lines) do g.text((l:gsub("([/%-]) ", "%1")), x, yy, ui.PAPER_INK); yy = yy + 10 end
   g.text("BACK", x + ui.key("b", x, 206, true) + 5, 206, ui.MUTED)
 end
-function Code:button(key) if key == "b" or key == "a" then pop() end end
+function Code:button(key)
+  if key == "a" and WALK then cabinet.open(self.url) end
+  if key == "b" or key == "a" then pop() end
+end
 
 local function hd_code(w)
   return Code.new(w.url, "SEE IT IN HD", w.title, "by " .. w.artist .. ". On " .. w.via .. ".")
@@ -950,7 +968,7 @@ function Grid:details()
   y = y + 8
   if self.sel > n then
     ui.tracked("SHIFT REPORT", 10, y, ui.INK, 1, 2)
-    ui.paragraph("Everything you found, as one code. Scan it into the museum to carry your shift over.", 10, y + 14, 300, ui.MUTED)
+    ui.paragraph(WALK and "Everything you found, carried into the museum." or "Everything you found, as one code. Scan it into the museum to carry your shift over.", 10, y + 14, 300, ui.MUTED)
     ui.hints({ "a", "show code", "b", "back" })
     return
   end
@@ -1012,7 +1030,7 @@ function Grid:button(key)
     if key == "up" or key == "left" then self:move(n)
     elseif key == "a" then
       push(Code.new(report_url(), "SHIFT REPORT", record.found_count() .. " of " .. n .. " bottles",
-        "Scan to carry your night shift into M.O.S.A."))
+        WALK and "Carry your night shift into M.O.S.A." or "Scan to carry your night shift into M.O.S.A."))
     end
     return
   end

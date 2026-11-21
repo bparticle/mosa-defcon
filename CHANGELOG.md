@@ -5,6 +5,25 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+Night Shift in the museum: an arcade cabinet in the M.O.S.A. Janitor Room
+plays the same app, for visitors without a badge.
+
+### Added
+
+- `pnpm build:web`: a static browser build of the app and its host
+  (`dist/web/night-shift-<version>-<hash>/`), which the museum pins and serves
+  from the cabinet.
+- In the cabinet, SEE IT IN HD says WALK THERE: SELECT takes you to the work in
+  the museum instead of showing a QR. The Lanyard shows its art large. On a
+  badge nothing changes.
+
+### Changed
+
+- The headless Solana OS is split into a core with no Node dependencies, the
+  Node host the tests use, and a browser host
+  ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#three-hosts-one-core)).
+- The shift report says it carries your night into M.O.S.A.
+
 ## [0.7.0] - 2026-11-21
 
 Every work in the museum, one scan away. Resubmitted with the same request for

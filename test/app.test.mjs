@@ -535,3 +535,50 @@ test('the desk calls once in the evening, and not on a night already worked', as
   assert.equal(calls(), 2, 'and again the next evening');
   assert.deepEqual(b.errors, []);
 });
+
+test('in the arcade cabinet a work is walked to, not scanned: cabinet.open, and no QR', async () => {
+  const opened = [];
+  const b = await bootApp({ cabinet: { open: (url) => opened.push(url) } });
+  for (let i = 0; i < 4; i++) await b.press('down');
+  await b.press('a'); await b.frames(2); // lanyard: an attract screen, no code to scan
+  assert.equal(b.qr(), null);
+  assert.ok(b.lastInstructions() < BUDGET);
+  await b.press('b');
+  for (let i = 0; i < 4; i++) await b.press('up');
+  await clockIn(b);
+  const room = ROOMS.find((id) => {
+    const at = data.indexOf(`id="${id}"`);
+    return /art=\{\s*\{w=/.test(data.slice(at, data.indexOf('goals=', at)));
+  });
+  b.lua(`mosa_debug.travel("${room}")`); await b.frames(2);
+  assert.equal(b.lua('return mosa_debug.near("art")'), true);
+  await b.frames(2);
+  await b.press('a'); await b.frames(2); // the work up close
+  assert.match(state(b), /scene=artcard/);
+  await b.press('a'); await b.frames(2); // SEE IT IN HD
+  assert.match(state(b), /scene=code/);
+  assert.equal(b.qr(), null, 'the cabinet draws no QR code');
+  await b.press('a'); await b.frames(1);
+  await new Promise((r) => setTimeout(r, 0)); // the visit begins after the callback returns
+  assert.equal(opened.length, 1);
+  assert.match(opened[0], /^https:\/\/[^/]+\/at\/work\/[a-z0-9-]+$/);
+  assert.doesNotMatch(state(b), /scene=code/, 'and the card steps back for when the visitor returns');
+  assert.deepEqual(b.errors, []);
+});
+
+test('the browser host core runs the app from a files map, its storage as JSON', async () => {
+  const { SolanaOS: CoreOS } = await import('../tools/lib/host-core.mjs');
+  const dir = new URL('../apps/mosa/', import.meta.url);
+  const files = {};
+  for (const rel of fs.readdirSync(dir, { recursive: true })) {
+    const file = new URL(String(rel).split(String.fromCharCode(92)).join('/'), dir);
+    if (fs.statSync(file).isFile()) files[String(rel).split(String.fromCharCode(92)).join('/')] = fs.readFileSync(file, 'utf8');
+  }
+  const b = await new CoreOS({ read: (rel) => files[rel], storageJson: '{"desk":{"worked":3}}' }).launch();
+  await b.frames(3);
+  assert.deepEqual(b.errors, []);
+  assert.deepEqual(JSON.parse(b.storageJson()).desk, { worked: 3 });
+  const junk = await new CoreOS({ read: (rel) => files[rel], storageJson: 'os.exit()' }).launch();
+  assert.deepEqual(junk.errors, [], 'damaged storage is an empty record');
+  b.close(); junk.close();
+});
