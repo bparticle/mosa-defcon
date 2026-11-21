@@ -5,6 +5,13 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-21
+
+### Changed
+
+- !LAMPs are back: the app asks for the `lamps` permission again, recovered
+  works earn !LAMPs and how to play says so. Everything from 0.8.0 is in.
+
 ## [0.8.0] - 2026-11-21
 
 Night Shift in the museum: an arcade cabinet in the M.O.S.A. Janitor Room
@@ -320,7 +327,8 @@ First release: **M.O.S.A. Night Shift**.
 
 Data: MOSA `f1d804c`, data schema 1, Solana OS `812b8c7`.
 
-[Unreleased]: ../../compare/v0.8.0...HEAD
+[Unreleased]: ../../compare/v0.8.1...HEAD
+[0.8.1]: ../../compare/v0.8.0...v0.8.1
 [0.8.0]: ../../compare/v0.7.0...v0.8.0
 [0.7.0]: ../../compare/v0.6.1...v0.7.0
 [0.6.1]: ../../compare/v0.6.0...v0.6.1
