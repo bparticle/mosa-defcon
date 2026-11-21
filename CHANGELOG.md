@@ -5,6 +5,14 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+### Changed
+
+- Every work's QR now opens that work in the museum: `mosa.center/at/work/<id>`
+  lands you in front of it, plaque open, in viewing mode, in full resolution.
+  Works with a page elsewhere (Mallow, 6529) are a click away on the plaque.
+  New works the museum hangs get their link with the next sync.
+- A long address under a QR breaks at its hyphens instead of being cut short.
+
 ### Fixed
 
 - No QR leads to `mosa.center/at/defcon` any more, a link the museum never

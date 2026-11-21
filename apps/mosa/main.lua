@@ -377,12 +377,14 @@ function Code:draw()
     if i <= 4 then g.text(l, x, y, ui.PAPER_INK); y = y + 10 end
   end
   y = y + 4
-  ui.paragraph(self.body or "", x, y, w, ui.MUTED, 1, 10)
-  local spaced = short_url(self.url):gsub("/", "/ "):gsub("%?", " ?")
+  y = y + ui.paragraph(self.body or "", x, y, w, ui.MUTED, 1, 10)
+  -- The address, broken after a slash or a hyphen (a work's id is long), in the
+  -- room the text above leaves; cut short only when it can't fit.
+  local spaced = short_url(self.url):gsub("/", "/ "):gsub("%-", "- "):gsub("%?", " ?")
   local lines = ui.wrap(spaced, w, 1)
-  if #lines > 3 then lines = { ui.fit(short_url(self.url), w) } end
+  if #lines > math.max(1, (194 - y - 6) // 10) then lines = { ui.fit(short_url(self.url), w) } end
   local yy = 194 - #lines * 10
-  for _, l in ipairs(lines) do g.text((l:gsub("/ ", "/")), x, yy, ui.PAPER_INK); yy = yy + 10 end
+  for _, l in ipairs(lines) do g.text((l:gsub("([/%-]) ", "%1")), x, yy, ui.PAPER_INK); yy = yy + 10 end
   g.text("BACK", x + ui.key("b", x, 206, true) + 5, 206, ui.MUTED)
 end
 function Code:button(key) if key == "b" or key == "a" then pop() end end

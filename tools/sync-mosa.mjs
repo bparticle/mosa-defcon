@@ -44,11 +44,11 @@ import { pixelize, pixelizeArt, validateSprite, encode } from './lib/pixel.mjs';
 import { glbEmpties } from './lib/glb.mjs';
 
 // MOSA's frontend modules import each other the way its bundler likes
-// (`./shows`, a bare `.json`). Node strips the types; these hooks fill in the
+// (`./shows`, `./sirialPins.generated`, a bare `.json`). Node strips the types; these hooks fill in the
 // rest, so the catalogue of hung works is read from MOSA's own source.
 registerHooks({
   resolve(spec, ctx, next) {
-    if (/^\.\.?\//.test(spec) && !/\.[a-z]+$/i.test(spec)) {
+    if (/^\.\.?\//.test(spec) && !/\.(ts|tsx|mjs|js|json)$/i.test(spec)) {
       for (const ext of ['.ts', '.tsx', '.mjs', '.js']) { try { return next(spec + ext, ctx); } catch { /* next */ } }
     }
     return next(spec, ctx);
@@ -353,7 +353,9 @@ async function main() {
   const roomsTs = mosaFile('apps/frontend/src/lib/rooms.generated.ts');
   const linksTs = mosaFile('apps/frontend/src/lib/linkPaths.ts');
   const { GENERATED_ROOMS } = await import(pathToFileURL(roomsTs).href);
-  const { parseLinkPath, findLinkPath } = await import(pathToFileURL(linksTs).href);
+  const { parseLinkPath, findLinkPath, workLinkPath } = await import(pathToFileURL(linksTs).href);
+  if (typeof workLinkPath !== 'function') throw new Error('MOSA has no /at/work/<id> links yet (linkPaths.ts workLinkPath); update the MOSA checkout');
+  const { wallWork, sirialWorkId } = await import(pathToFileURL(mosaFile('apps/frontend/src/lib/works.ts')).href);
   const { HUNG_WORKS } = await import(pathToFileURL(mosaFile('apps/frontend/src/lib/communityArt.ts')).href);
   const { SIRIAL_PINS } = await import(pathToFileURL(mosaFile('apps/frontend/src/lib/sirialPins.generated.ts')).href);
   const { SIRIALS_PROVENANCE } = await import(pathToFileURL(mosaFile('apps/frontend/src/lib/sirials.provenance.generated.ts')).href);
@@ -426,7 +428,7 @@ async function main() {
   const hung = [];
   for (const w of HUNG_WORKS) {
     hung.push({
-      key: `work/${w.id ?? w.placement}`, room: w.room, placement: w.placement,
+      key: `work/${w.id ?? w.placement}`, work: w.id, room: w.room, placement: w.placement,
       title: w.title, artist: w.artist ?? '', collection: w.collection ?? '', aspect: w.aspect, link: w.link,
       // A moving-image work's still: MOSA's own rule (videoBudget.posterUrlFor).
       image: w.url.replace(/\.mp4$/i, '.poster.webp'),
@@ -436,7 +438,7 @@ async function main() {
     const prov = SIRIALS_PROVENANCE[`CARD_${p.card}`];
     const trait = (label) => prov?.traits?.find((t) => t.label === label)?.value;
     hung.push({
-      key: `sirial/${p.card}`, room: p.room, placement: p.name,
+      key: `sirial/${p.card}`, work: sirialWorkId(p.card), room: p.room, placement: p.name,
       title: prov?.item ? `${prov.title}: ${prov.item}` : (prov?.title ?? `Sirial #${p.card}`),
       artist: trait('Artist') ?? 'Sirius Crocodile', collection: prov?.collection ?? 'Sirials', aspect: 1,
       image: `/collections/sirials/CARD_${p.card}--square.webp`,
@@ -490,8 +492,9 @@ async function main() {
   for (const r of rooms) Object.assign(r, { plan: map.rooms[r.id].rects, at: map.rooms[r.id].at });
 
   // Works: a pixel miniature of each hung piece and a link to the real one, in
-  // full resolution: the work's own page where MOSA's plaque has one, else the
-  // room's curated link, else the museum.
+  // full resolution: its own /at/work/<id>, which lands in front of it in viewing
+  // mode (MOSA lib/works.ts). A work MOSA doesn't list there keeps the old way: its
+  // plaque's page, else the room's curated link, else the museum.
   const works = [];
   for (const w of hung) {
     const idx = registry.works.indexOf(w.key);
@@ -499,8 +502,13 @@ async function main() {
     const file = path.join(PUBLIC, w.image);
     if (!fs.existsSync(file)) { log(`${w.key}: missing image ${w.image}; skipped`); continue; }
     const sp = await pixelizeArt(fs.readFileSync(file), { aspect: w.aspect });
-    let url = roomLinks[w.room] ?? `${SITE}/`;
-    if (/^https:\/\/\S+$/.test(w.link ?? '') && w.link.length <= 200) url = w.link;
+    let url;
+    if (w.work && wallWork(w.work)) url = linkUrl(workLinkPath(w.work));
+    else {
+      log(`${w.key}: not in MOSA's list of wall works; linked to its page or room`);
+      url = roomLinks[w.room] ?? `${SITE}/`;
+      if (/^https:\/\/\S+$/.test(w.link ?? '') && w.link.length <= 200) url = w.link;
+    }
     works.push({
       idx, room: w.room, title: ascii(w.title), artist: ascii(w.artist), set: ascii(w.collection) || undefined,
       url, via: new URL(url).hostname.replace(/^www\./, ''), sw: sp.w, sh: sp.h, ...encode(sp),

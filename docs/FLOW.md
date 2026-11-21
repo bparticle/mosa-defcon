@@ -109,7 +109,7 @@ light, sized for a phone at arm's length:
 | On the badge | QR target | Exists today? |
 | --- | --- | --- |
 | A found bottle | `mosa.center/at/find/bottle/<piece>`, MOSA's canonical find link | **Yes**: lands in front of that find |
-| A work, up close | The work's own link from MOSA's hung-works data (its Mallow or 6529 page); else its room's curated link, else the museum | **Yes**. Sirials open their room or the museum until MOSA's `/at/work/<id>` (lands in viewing mode) is built |
+| A work, up close | `mosa.center/at/work/<id>`, MOSA's canonical work link (`lib/works.ts`) | **Yes**: lands in front of the work, in viewing mode |
 | Lanyard, About | The Janitor Room's curated link (`mosa.center/at/bp26`), found by the sync; else the museum | **Yes**. Nothing to author for the badge |
 | Shift report | The same link plus `?shift=<code>` | **Yes**: the museum reads `shift` on any path |
 

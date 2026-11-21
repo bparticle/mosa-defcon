@@ -15,7 +15,7 @@ The badge never hand-copies museum content. `pnpm sync` derives everything:
 | Landmarks | `vitrines`, `flapboards`, `postcardwalls`, `dispensers`, `vendors`, `entrances` | Furniture you walk around, in the light; nothing to read. Any kind works with no badge change |
 | Room stamps | `apps/frontend/public/rooms/<id>.programme.json` goals | The badge awards `visit` and `discover-room` (a room behind one stays off the museum map until found). Other goal types are logged by the sync and skipped, never approximated |
 | Museum map | The room claim volumes, which share one world space | Scaled to the map screen and cropped; each room's rects and centre |
-| Works | `apps/frontend/src/lib/communityArt.ts` `HUNG_WORKS`, `sirialPins.generated.ts` `SIRIAL_PINS`, titles from `sirials.provenance.generated.ts` | Title, artist, link; images pixelized to at most 24×24 in 7 flat colours (4 for ink drawings). A work's own https link is its QR, else its room's. `registry.works` is append-only like the others |
+| Works | `apps/frontend/src/lib/communityArt.ts` `HUNG_WORKS`, `sirialPins.generated.ts` `SIRIAL_PINS`, titles from `sirials.provenance.generated.ts`; links from `lib/works.ts` | Title, artist, link; images pixelized to at most 24×24 in 7 flat colours (4 for ink drawings). A work's QR is its `/at/work/<id>` (`workLinkPath`), which lands in viewing mode. `registry.works` is append-only like the others |
 | Where works hang | Each room's GLB: `<room>_placement_<slot>` and `sirial_placement_N` empties (`tools/lib/glb.mjs`) | Snapped to the nearest wall within 3 tiles, facing out; otherwise a free-standing panel |
 | Bottle spots | The room GLBs' `find_placement__bottle.NNN` empties | Bottles lie there first, then anywhere on the floor |
 | Bottles, tiers, artists | `GET /finds/catalog` (live API) | Rarity weights and hunt rooms come from the catalogue, so a re-tuned hunt re-tunes the badge on the next sync |
@@ -78,12 +78,13 @@ Built in `bparticle/mosa` (migration 078, `apps/frontend/docs/BADGE-SHIFT.md`):
   code from a newer badge still reads; the extra bottles are ignored until then.
 - Analytics: a row in `badge_shifts` = arrived from a badge.
 
-### 3. `/at/work/<id>`: every work its own link, landing in viewing mode — built in MOSA, badge to follow
+### 3. `/at/work/<id>`: every work its own link, landing in viewing mode — done
 
-Built on `feature/work-links` in `bparticle/mosa` (`apps/frontend/docs/LINKS.md`): `lib/works.ts`
-lists every hung work and pinned Sirial with its id, and `workLinkPath(id)` names it. Next on the badge:
-the sync reads `WALL_WORKS` and prints `workLinkPath` for every work (the art QR becomes the work
-itself, in full resolution), and `parseLinkPath` keeps the sync from printing one before MOSA has it.
+In `bparticle/mosa` (`apps/frontend/docs/LINKS.md`): `lib/works.ts` lists every hung work and pinned
+Sirial with its id (a curated work's `id`, `sirial-<card>`), and `workLinkPath(id)` names it. The sync
+maps each hung work to that id and prints its link; a work MOSA doesn't list falls back to its plaque's
+page or its room, with a log line. The sync stops with a clear message on a MOSA checkout without
+`workLinkPath`.
 
 ### 3b. Canonical `/at/room/<roomId>` (both apps, mirrored grammar)
 
