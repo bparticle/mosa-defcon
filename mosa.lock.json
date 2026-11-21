@@ -1,11 +1,11 @@
 {
   "$comment": "Written by `pnpm sync`. The registry is append-only: never reorder or delete an entry (shift-report bitmasks index into it).",
   "schema": 2,
-  "generator": "mosa-badge@0.6.1",
+  "generator": "mosa-badge@0.7.0",
   "mosa": {
     "repo": "bparticle/mosa",
-    "commit": "ad0a36ee501ffa0726c4c0fb0772556ade1e07e1",
-    "describe": "ad0a36e",
+    "commit": "cc624928cbb54662f8549d6e34a26cc82403ad3c",
+    "describe": "cc62492",
     "dirty": false
   },
   "api": {
@@ -14,7 +14,7 @@
     "links": "0b0214b32182af0e"
   },
   "rooms": "900ac199821c29fc",
-  "data": "bd45b9aeadedd490",
+  "data": "78be8d0df715bcc7",
   "pixel": {
     "hand": [],
     "auto": 41,

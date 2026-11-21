@@ -1,2 +1,2 @@
--- Written by tools/bundle.mjs. v0.7.0, MOSA ad0a36e, data bd45b9aeadedd490.
-return { version = "0.7.0", mosa = "ad0a36ee501f", data = "bd45b9aeadedd490", repo = "https://github.com/bparticle/mosa-defcon" }
+-- Written by tools/bundle.mjs. v0.7.0, MOSA cc62492, data 78be8d0df715bcc7.
+return { version = "0.7.0", mosa = "cc624928cbb5", data = "78be8d0df715bcc7", repo = "https://github.com/bparticle/mosa-defcon" }
