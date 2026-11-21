@@ -4,8 +4,8 @@
   "generator": "mosa-badge@0.6.1",
   "mosa": {
     "repo": "bparticle/mosa",
-    "commit": "29070851eaec8b4abe072e4368553bcffb5d583e",
-    "describe": "2907085",
+    "commit": "ad0a36ee501ffa0726c4c0fb0772556ade1e07e1",
+    "describe": "ad0a36e",
     "dirty": false
   },
   "api": {
@@ -14,7 +14,7 @@
     "links": "0b0214b32182af0e"
   },
   "rooms": "900ac199821c29fc",
-  "data": "59335dee033464c9",
+  "data": "89fc8cbe366a7c10",
   "pixel": {
     "hand": [],
     "auto": 41,
