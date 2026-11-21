@@ -6,6 +6,8 @@ local ui = require("kit")
 local sprites = require("sprites")
 local night = require("night")
 local record = require("record")
+local caper = require("caper")
+local vignette = require("vignette")
 
 local desk = {}
 
@@ -47,8 +49,14 @@ function desk.scenes(ctx)
         ui.block("DAWN", 16, 30, 5, ui.INK, ui.SHADOW)
       end
     end
+    -- Everyone caught tonight, behind bars.
+    if T > 1 and #game.cell > 0 then
+      ui.tracked("HELD TONIGHT", 184, 32, ui.MUTED, 1, 2)
+      vignette.cell(184, 44, 120, 26, game.cell, T)
+    end
     local rows = {}
     rows[#rows + 1] = { plural(n.recovered, "work") .. " back on " .. (n.recovered == 1 and "its wall" or "their walls"), ui.INK }
+    if n.prevented > 0 then rows[#rows + 1] = { plural(n.prevented, "theft") .. " stopped in the act", ui.INK } end
     if n.lost > 0 then rows[#rows + 1] = { plural(n.lost, "thie" .. (n.lost == 1 and "f" or "ve")) .. " left with the light", ui.MUTED }
     elseif n.recovered > 0 then rows[#rows + 1] = { "Nothing lost tonight", ui.ACCENT } end
     rows[#rows + 1] = { plural(game.tonight.seen, "new work") .. " seen, " .. plural(game.tonight.bottles, "bottle") .. " picked up", ui.MUTED }
@@ -58,7 +66,7 @@ function desk.scenes(ctx)
     if n.lamps > 0 then rows[#rows + 1] = { "+" .. n.lamps .. " !LAMPs earned", ui.INK }
     elseif ctx.needs_x() then rows[#rows + 1] = { "Link X on the badge site to earn !LAMPs", ui.DIM } end
     for i, r in ipairs(rows) do
-      if T > 0.9 + i * 0.2 then g.text(r[1], 16, 84 + i * 13, r[2]) end
+      if T > 0.9 + i * 0.2 then g.text(r[1], 16, 84 + i * (#rows > 5 and 12 or 13), r[2]) end
     end
     -- Tonight's recoveries, back where they belong.
     local x = 304
@@ -74,7 +82,7 @@ function desk.scenes(ctx)
       local l = self.left
       local still = "Still out there: " .. plural(l.bottles, "bottle") .. ", " .. plural(l.works, "work") .. ", " .. plural(l.rooms, "room") .. "."
       if l.bottles + l.works + l.rooms == 0 then still = "You have found everything. The thieves haven't stopped." end
-      ui.paragraph(still .. " A new night comes every day.", 16, 170, 288, ui.MUTED, 1, 10)
+      ui.paragraph(still .. " A new night comes every day.", 16, 174, 288, ui.MUTED, 1, 10)
     end
     if T > 2.6 then ui.hints({ "a", "shift report", "b", "clock out" }) end
   end
@@ -90,9 +98,10 @@ function desk.scenes(ctx)
   local PAGES = {
     { "THE NIGHT", "Thieves break in after closing. Your shift runs from 23:41 to dawn: recover every work you can before 06:00, when the ones still inside leave with the light. The clipboard (CANCEL) stops the clock." },
     { "THE LIGHT", "An empty frame shows what was taken. Find the thief in the dark and hold your flashlight on them until they drop the work. Too slow, or too loud, and they run for a door." },
-    { "THE DESK", "Clear a break-in and the desk radios the next. It reads how you're doing: a quick janitor gets more thieves, a struggling one a breather and a sighting." },
+    { "THE THIEVES", "Four kinds get in. The creep runs from the light. The statue freezes in it and poses: look away, then back. The dodger weaves: back them into a wall. The swindler drops a fake: keep your light on them." },
+    { "THE DESK", "Clear a break-in and the desk radios the next, sized to how you're doing. One of the caught may leave a calling card: work out the room it means, and be in it when they come." },
     { "TRAVEL", "The map takes you to any room you've walked before, in a blink. Each trip costs twenty minutes of the night. Doors are free." },
-    { "EVERY NIGHT", "A new night every day: keep a streak, find every bottle and every work, and earn !LAMPs for what you recover (link X on the badge site)." },
+    { "EVERY NIGHT", "A new night every day, with its own weather: a storm, a full moon, no moon at all. Keep a streak, find every bottle and every work, and earn !LAMPs for what you recover (link X on the badge site)." },
   }
   function HowTo.new() return setmetatable({ page = 1 }, HowTo) end
   local function picture(page)
@@ -115,12 +124,23 @@ function desk.scenes(ctx)
       g.rect(236, cy - 18, 26, 32, ui.CAST)
       g.rect(240, cy - 14, 18, 24, ui.DIM)
     elseif page == 3 then
+      -- The four, as they stand in the light.
+      local kinds = { "creep", "statue", "dodger", "swindler" }
+      for i, k in ipairs(kinds) do
+        local x = 52 + (i - 1) * 72
+        local y = cy + 24
+        if k == "statue" then g.fill_rect(x - 12, y - 4, 24, 4, ui.CAST); y = y - 4 end
+        sprites.draw("thief", k == "dodger" and "right" or "down", k == "dodger" and 1 or 0, x, y, 2)
+        if k == "swindler" then g.fill_rect(x + 10, cy + 18, 12, 5, ui.PAPER) end
+        g.text_center(caper.NAME[k]:sub(5), x, cy + 32, ui.MUTED)
+      end
+    elseif page == 4 then
       g.fill_rect(70, cy - 26, 180, 52, ui.PAPER)
       ui.tracked("CAM 07  BREAK-IN", 80, cy - 18, ui.PAPER_INK, 1, 2)
       g.text("Someone at a wall in", 80, cy - 2, ui.MUTED)
       g.text("the Red Room.", 80, cy + 9, ui.MUTED)
       g.fill_rect(70, cy - 26, 3, 52, ui.PAPER_INK)
-    elseif page == 4 then
+    elseif page == 5 then
       local m = DATA.map
       local k = math.min(220 / m.w, 80 / m.h)
       local ox, oy = cx - math.floor(m.w * k / 2), cy - math.floor(m.h * k / 2)

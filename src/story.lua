@@ -230,7 +230,7 @@ function story.scenes(ctx)
     else
       local word = n == 1 and "ONE WORK STOLEN" or ((n == 2 and "TWO" or (n == 3 and "THREE" or tostring(n))) .. " WORKS STOLEN")
       ui.tracked_center(word, 160, SY + SH + 8, ui.INK, 1, 3)
-      local cw = 96
+      local cw = math.min(96, 304 // n)
       local x0 = (ui.W - cw * n) // 2
       for i, h in ipairs(plan) do
         if stage > i then
@@ -240,7 +240,14 @@ function story.scenes(ctx)
           g.text_center(ui.fit((r and r.name or "?"):upper(), cw - 6), x + cw // 2, 168, ui.MUTED)
         end
       end
-      if stage > n then g.text_center("Find them in the dark. Hold your light on them.", 160, 184, ui.INK) end
+      if stage > n then
+        -- Tonight's weather, when it isn't a clear night.
+        local w = ctx.weather and ctx.weather()
+        if w and w.id ~= "clear" then
+          ui.tracked_center("TONIGHT, " .. w.name, 160, 180, ui.INK, 1, 2)
+          g.text_center(w.line, 160, 192, ui.MUTED)
+        else g.text_center("Find them in the dark. Hold your light on them.", 160, 184, ui.INK) end
+      end
     end
     if stage > n then ui.hints({ "a", "start the shift", "b", "not tonight" }) end
   end

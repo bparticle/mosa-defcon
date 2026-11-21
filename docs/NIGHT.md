@@ -53,12 +53,62 @@ roll meets more and quicker thieves; one who's struggling gets a breather.
 A thief who goes `SIGHTING` (50) real seconds without being lit is reported
 again ("last seen in ..."), so nobody wanders lost for long.
 
+## The thieves
+
+Each thief is one of four kinds (`caper.kind`), one rule each in
+`Room:update_thief` (`world.lua`). The night's first thief is always a creep,
+so a new janitor learns the light on them; later waves bring more swindlers.
+
+| Kind | In the light | The way to catch them |
+| --- | --- | --- |
+| Creep | Dazzled, makes for a door | Hold the beam on them |
+| Statue | Freezes after `POSE` (0.45 s) and poses on a plinth; never runs | Only a fresh look heats them: look away, then back |
+| Dodger | Weaves across the beam at `DODGE`, switching side every `ZIG` | Back them into a wall |
+| Swindler | The first time the bar fills, drops a dummy and bolts for `BOLT` | Keep the light on them; the second time is real |
+
+Walking into a room with a thief, the toast says what kind ("Something in
+here is standing very still."). A thief who gets away with the bar over 60%
+full gets SO CLOSE.
+
+## The weather
+
+Every day has a night of its own (`caper.night(day)`), the same for every
+janitor: the title's desk board ("TONIGHT: A STORM") and the briefing say it.
+
+| Night | What it does |
+| --- | --- |
+| A clear night | Nothing |
+| A storm | Every 7 to 16 s, lightning: for a blink every thief in the room shows |
+| A full moon | Thieves 0.12 quicker, and footsteps carry 60% as far |
+| No moon | No eyes glint in the dark; the LEDs still sweep near a thief |
+| A gala | One more thief in the first break-in |
+
+## Calling cards and the holding cell
+
+When a wave is cleared, the next one is planned straight away
+(`Game:cleared`), so one of the caught can leave a card for it. The holding
+cell plays first: CAM 00, this wave's thieves walking into the cell with
+everyone caught earlier, the bars coming down, and a card flicked at the
+camera. The card (`caper.card`) is written from the synced data only: what
+they're after (its set, its artist's initials, the first letter of its title
+or its colour) and where (a neighbouring room on the map, then the first
+letter of the room's name or how many works hang there, whichever narrows the
+rooms with art down further).
+
+With a card out, the calm is at least `caper.CALM` (40) minutes, enough for a
+trip on the map. The clipboard keeps the card. When the break-in comes, a
+janitor standing in a room it targets catches that thief in the act: the work
+never leaves its wall, the thief joins the cell, and the dawn report counts
+it ("1 theft stopped in the act"). It earns the same !LAMPs as a recovery.
+
 ## Dawn
 
 At 06:00, or when the janitor clocks out from the clipboard, the lights come
 up. Any thief still inside leaves with their work. The dawn report shows:
 
-- works back on their walls, and any lost (or "Nothing lost tonight");
+- who was held tonight, behind bars;
+- works back on their walls, thefts stopped in the act, and any lost (or
+  "Nothing lost tonight");
 - new works seen and bottles picked up;
 - the night count and the streak, with the best night;
 - the !LAMPs earned (or how to start earning them);
@@ -91,7 +141,7 @@ app awards:
 
 | For | !LAMPs |
 | --- | --- |
-| Each work recovered | 3 |
+| Each work recovered, or each theft stopped in the act | 3 |
 | A clean night (nothing lost, not clocked out) | 10 |
 | The day's first shift on a streak of 3 or more | 5 |
 
@@ -103,7 +153,11 @@ small on purpose: the reason to play is the night, not the payout.
 ## Tuning
 
 Everything is a constant at the top of `src/night.lua` (`START`, `DAWN`,
-`SPEED`, `TRAVEL`, `CALM`, `SIGHTING`) plus the table in `next_wave`. The
-tests run a whole night on the headless badge (`test/app.test.mjs`: "the
-night runs on a clock", "clearing a break-in", "nights count by the day"),
-and `mosa_debug.clock(min)` jumps the clock in a playthrough.
+`SPEED`, `TRAVEL`, `CALM`, `SIGHTING`) plus the table in `next_wave`; the
+kinds' constants are at the thief in `src/world.lua` (`POSE`, `DODGE`, `ZIG`,
+`BOLT`), and the weather, the kinds' odds and `CALM` for a card are in
+`src/caper.lua`. The tests run a whole night on the headless badge
+(`test/app.test.mjs`: "the night runs on a clock", "clearing a break-in",
+"a cleared break-in leaves a calling card", "the kinds of thief", "nights
+count by the day"), and `mosa_debug.clock(min)` jumps the clock in a
+playthrough.

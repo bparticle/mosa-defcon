@@ -22,7 +22,7 @@ night.SIGHTING = 50 -- real seconds a thief can go unseen before the desk report
 
 function night.new()
   return { min = night.START, wave = 0, size = 0, cleared_in = nil, wave_t = 0, calm = nil,
-    since_seen = 0, recovered = 0, lost = 0, waves = 0, lamps = 0 }
+    since_seen = 0, recovered = 0, prevented = 0, lost = 0, waves = 0, lamps = 0 }
 end
 
 --- "02:14": the clock as the badge shows it.

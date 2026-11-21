@@ -101,23 +101,36 @@ async function main() {
   await shot('18-shift-report-qr');
   await b.press('b'); await b.press('b'); await b.press('b');
 
-  // The rest of tonight's thieves, and the lights come up.
-  for (const id of heist.slice(1)) {
+  // The rest of tonight's thieves (the second one a statue, posing in the
+  // light), the holding cell, and the calling card one of them leaves.
+  for (const [n, id] of heist.slice(1).entries()) {
     b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
+    if (n === 0) {
+      b.lua('mosa_debug.face_thief("statue")'); await b.frames(30);
+      await shot('27-statue-poses');
+    }
     b.lua('mosa_debug.face_thief()');
     for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
     await b.press('b'); await b.frames(2);
   }
-  await b.frames(10);
+  await b.frames(70);
   await shot('19-all-clear');
-  await b.frames(100);
+  for (let i = 0; i < 200 && !/scene=callingcard/.test(state(b)); i++) await b.frames(1);
+  await shot('28-calling-card');
+  await b.press('a'); await b.frames(2);
+  const cardRoom = String(b.lua('return mosa_debug.card()')).split(' / ')[1];
 
   b.meshIn('7K2Q9M', { w: '@pixeljanitor' }); await b.frames(3);
   await shot('20-wave-received');
   await b.frames(100);
 
-  // The calm ends: the desk radios the next wave.
-  b.lua('local n = mosa_debug.game().night; mosa_debug.clock(n.calm + 1)'); await b.frames(4);
+  // The calm ends where the card said: the janitor is waiting.
+  b.lua(`mosa_debug.travel("${cardRoom}")`); await b.frames(4);
+  b.lua('local n = mosa_debug.game().night; mosa_debug.clock(n.calm + 1)'); await b.frames(60);
+  await shot('29-caught-in-the-act');
+  for (let i = 0; i < 200 && !/scene=(game|holding)/.test(state(b)); i++) await b.frames(1);
+  for (let i = 0; i < 6 && !/scene=game/.test(state(b)); i++) { await b.press('b'); await b.frames(2); }
+  await b.frames(4);
   await shot('23-break-in');
   await b.frames(120);
 
@@ -143,6 +156,8 @@ async function main() {
   t.screenshot(path.join(OUT, '25-how-to-play.png'), 2);
   await t.press('right'); await t.frames(2);
   t.screenshot(path.join(OUT, '26-how-to-play-light.png'), 2);
+  await t.press('right'); await t.frames(2);
+  t.screenshot(path.join(OUT, '30-how-to-play-thieves.png'), 2);
   if (t.errors.length) throw new Error(JSON.stringify(t.errors));
 
 

@@ -19,8 +19,12 @@ for the museum.
 
 The night has a clock: 23:41 to dawn, about eight minutes of play. Clear a
 break-in and the security desk radios the next, sized to how you're doing;
-whatever is still inside at 06:00 leaves with the light. Every day brings a
-new night (the same first break-in for every janitor that day), a streak to
+whatever is still inside at 06:00 leaves with the light. Four kinds of thief
+get in (a creep, a statue that poses in your light, a dodger, a swindler with
+a dummy), the caught go behind bars, and one of them may flick you a calling
+card: work out the room it means and be there to catch the next one in the
+act. Every day brings a new night with its own weather (a storm, a full moon,
+no moon, a gala) and the same first break-in for every janitor, a streak to
 keep, and works and bottles still to find. Recovered works earn !LAMPs, the
 badge's own currency, and once you've worked a night the desk can call you
 in the evening when the museum is hit again.
@@ -32,6 +36,7 @@ in the evening when the museum is hit again.
 | ![A thief in the light](docs/screens/10-thief-in-the-light.png) | ![Recovered](docs/screens/11-recovered.png) | ![Museum map](docs/screens/15-museum-map.png) |
 | ![The art](docs/screens/16-the-art.png) | ![Teleport](docs/screens/22-teleport.png) | ![The next break-in](docs/screens/23-break-in.png) |
 | ![All clear, for now](docs/screens/19-all-clear.png) | ![Dawn](docs/screens/24-dawn.png) | ![How to play](docs/screens/25-how-to-play.png) |
+| ![A statue poses](docs/screens/27-statue-poses.png) | ![A calling card](docs/screens/28-calling-card.png) | ![Caught in the act](docs/screens/29-caught-in-the-act.png) |
 
 *Screenshots come from the headless Solana OS in `tools/lib/host.mjs`
 (`pnpm preview`). The firmware draws QR codes itself, so they show as

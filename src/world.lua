@@ -33,6 +33,17 @@ local REACH, HALF, POOL = 6.8 * TILE, 0.42, 1.5 * TILE
 local Room = {}
 Room.__index = Room
 
+-- The night's mood, set by main.lua from tonight's weather (caper.lua).
+world.eyes = true  -- eyes glint in the dark now and then
+world.hear = 1     -- how far footsteps carry, as a share of HEAR
+world.bolt = false -- lightning: for a blink, everyone in the room shows
+
+--- A thief, with a work under one arm. `kind` is one of caper.lua's four.
+local function new_thief(x, y, work, pace, kind, turn)
+  return { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = turn or 0, seen = false,
+    pace = pace, kind = kind or "creep", side = 1, lit_t = 0 }
+end
+
 -- Laying out a room is the heaviest thing the app does, and Solana OS stops
 -- any callback that runs past 200 000 Lua instructions. So it runs as a
 -- coroutine: `pause` is called as the work adds up and the caller spreads it
@@ -124,9 +135,9 @@ function Room:resume(pause)
   if not self.cells then self:lay(pause) end
   -- A thief who ran in here while the room was folded away.
   local inc = self.incoming
-  if inc then self.incoming = nil; self:let_in(inc[1], inc[2]) end
+  if inc then self.incoming = nil; self:let_in(inc[1], inc[2], inc[3]) end
   local st = self.staged
-  if st then self.staged = nil; self:break_in(st[1], st[2], self.rng) end
+  if st then self.staged = nil; self:break_in(st[1], st[2], self.rng, st[3]) end
 end
 
 --- Build a playable room from synced data.
@@ -134,6 +145,7 @@ end
 ---   opts.stock()   picks the next bottle that litters it
 ---   opts.works     work idx -> synced work, for what hangs here
 ---   opts.heist     a work idx a thief has taken from this room tonight, or nil
+---   opts.kind      what kind of thief took it
 function world.build(data, opts)
   local charge = pacer(opts.pause)
   local rng = opts.rng
@@ -183,7 +195,7 @@ function world.build(data, opts)
       local work = opts.works[opts.heist]
       local x, y = spot()
       if work and x then
-        r.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0, seen = false, pace = opts.pace }
+        r.thief = new_thief(x, y, work, opts.pace, opts.kind)
       end
     end
   end
@@ -293,7 +305,13 @@ end
 -- long enough (HEAT seconds), they drop the work; reach a door first and they
 -- are away into the next room, work and all.
 
+-- The kinds bend the rule: a statue poses once a look has lasted POSE
+-- seconds (only a fresh look heats them), a dodger weaves across the beam at
+-- DODGE, switching side every ZIG, and a swindler drops a dummy the first time
+-- and bolts for BOLT seconds.
 local SNEAK, DAZZLED, HEAT, HEAR = 1.7, 1.25, 1.1, 3.2
+local POSE, DODGE, ZIG, BOLT = 0.45, 1.6, 0.6, 2.4
+world.HEAT = HEAT
 
 --- The door a thief would run for: the nearest one on the far side from the
 --- janitor, into a room `ok(to)` allows.
@@ -311,8 +329,8 @@ function Room:escape_door(th, jx, jy, ok)
 end
 
 --- A thief arriving through the door from `from` (one that got away next door).
-function Room:let_in(work, from)
-  if not self.cells then self.incoming = { work, from }; return end
+function Room:let_in(work, from, kind)
+  if not self.cells then self.incoming = { work, from, kind }; return end
   -- Always through a door: this runs inside a tick, with no pause to spread
   -- the open-floor search over.
   local back = false
@@ -320,14 +338,14 @@ function Room:let_in(work, from)
   if not back and self.data.doors[1] then from = self.data.doors[1].to end
   local x, y = self:arrival(from)
   local pace = self.thief and self.thief.pace
-  self.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0.6, seen = false, pace = pace }
+  self.thief = new_thief(x, y, work, pace, kind, 0.6)
 end
 
 --- A break-in: a thief takes `work` off this room's wall and stays to hide.
 --- `pace` scales how fast they move. A folded-away room stages it on return.
-function Room:break_in(work, pace, rng)
+function Room:break_in(work, pace, rng, kind)
   for _, a in ipairs(self.art) do if a.work == work then a.missing = true end end
-  if not self.cells then self.staged = { work, pace }; return end
+  if not self.cells then self.staged = { work, pace, kind }; return end
   local w, h, cells = self.w, self.h, self.cells
   local x, y
   for _ = 1, 80 do
@@ -335,11 +353,11 @@ function Room:break_in(work, pace, rng)
     if cells[cy * w + cx + 1] == FLOOR and not self:near_door(cx, cy, 2) then x, y = cx + 0.5, cy + 0.5; break end
   end
   if not x then x, y = self:arrival(self.data.doors[1] and self.data.doors[1].to) end
-  self.thief = { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = 0, seen = false, pace = pace }
+  self.thief = new_thief(x, y, work, pace, kind)
 end
 
---- Advance the thief; returns "caught" the moment they give up, or "fled" and
---- the door they got away through.
+--- Advance the thief; returns "caught" the moment they give up, "dummy" when
+--- a swindler drops a fake, or "fled" and the door they got away through.
 function Room:update_thief(dt, jx, jy, lit, rng, ok)
   local th = self.thief
   if not th or th.gone then return nil end
@@ -348,26 +366,54 @@ function Room:update_thief(dt, jx, jy, lit, rng, ok)
     if th.caught <= 0 then th.gone = true end
     return nil
   end
+  local kind = th.kind
   local speed = SNEAK * (th.pace or 1)
   local ax, ay = th.x - jx, th.y - jy
-  local heard = not lit and ax * ax + ay * ay < HEAR * HEAR
-  local run = not th.stay and (lit or heard) and self:escape_door(th, jx, jy, ok)
+  local hear = HEAR * world.hear
+  local heard = not lit and ax * ax + ay * ay < hear * hear
+  -- A statue trusts the pose and never runs; a dodger in the light weaves.
+  local posing = kind == "statue" and lit and th.lit_t >= POSE
+  local flee = (lit and kind ~= "dodger") or heard
+  local run = not th.stay and kind ~= "statue" and flee and self:escape_door(th, jx, jy, ok)
   -- The moment they hear you: a "!" over their head, even in the dark.
   if run and not th.running then th.alert = 0.8 end
   th.running = run and true or false
   if th.alert then th.alert = th.alert > dt and th.alert - dt or nil end
   if lit then
     th.seen = true
-    th.heat = th.heat + dt
-    speed = DAZZLED
+    th.lit_t = th.lit_t + dt
+    if posing then speed = 0
+    else
+      th.heat = th.heat + dt
+      speed = kind == "dodger" and DODGE or DAZZLED
+    end
     if th.heat >= HEAT then
+      if kind == "swindler" and not th.tricked then
+        -- A dummy: a rolled-up fake on the floor, and away with the real one.
+        self.dummy = { x = th.x, y = th.y }
+        th.tricked, th.heat, th.bolt = true, 0, BOLT
+        return "dummy"
+      end
       th.caught = 0.6
       return "caught"
     end
   else
-    th.heat = math.max(0, th.heat - dt * 0.5)
+    th.lit_t = 0
+    th.heat = math.max(0, th.heat - dt * (kind == "statue" and 0.15 or 0.5))
   end
-  if run then
+  if th.bolt then
+    th.bolt = th.bolt > dt and th.bolt - dt or nil
+    speed = SNEAK * 1.6
+  end
+  if posing then
+    th.fx, th.fy = 0, 1
+  elseif lit and kind == "dodger" and not run then
+    -- Across the beam, one way then the other.
+    th.zig = (th.zig or 0) - dt
+    if th.zig <= 0 then th.zig, th.side = ZIG, -th.side end
+    local d = math.sqrt(ax * ax + ay * ay)
+    if d > 0.01 then th.fx, th.fy = -ay / d * th.side, ax / d * th.side end
+  elseif run then
     local dx, dy = run.x + 0.5 - th.x, run.y + 0.5 - th.y
     local d = math.sqrt(dx * dx + dy * dy)
     if d > 0.01 then th.fx, th.fy = dx / d, dy / d end
@@ -387,9 +433,9 @@ function Room:update_thief(dt, jx, jy, lit, rng, ok)
   th.x, th.y = self:slide(th.x, th.y, th.fx * speed * dt, th.fy * speed * dt, 0.3)
   local moved = math.abs(th.x - ox) + math.abs(th.y - oy)
   if moved < speed * dt * 0.3 then
-    -- Cornered: turn and try another way next tick.
+    -- Cornered: turn and try another way next tick (a dodger, the other side).
     local a = rng:float() * 6.283
-    th.fx, th.fy, th.turn = math.cos(a), math.sin(a), 0.5
+    th.fx, th.fy, th.turn, th.zig = math.cos(a), math.sin(a), 0.5, 0
   end
   th.step = th.step + moved
   if run then
@@ -807,7 +853,18 @@ function Room:draw(px, py, fx, fy, t, walk)
     end
   end
 
-  -- The thief: seen only in the light. In the dark, now and then, two eyes.
+  -- A swindler's dummy, where they dropped it: a rolled-up fake.
+  local dm = self.dummy
+  if dm then
+    local sx, sy = math.floor(dm.x * TILE) - cx, math.floor(dm.y * TILE) - cy
+    if light.lit(L, sx, sy) then
+      g.fill_rect(sx - 5, sy - 3, 10, 4, ui.PAPER)
+      g.fill_rect(sx - 5, sy - 3, 2, 4, ui.MUTED); g.fill_rect(sx + 3, sy - 3, 2, 4, ui.MUTED)
+    end
+  end
+
+  -- The thief: seen only in the light. In the dark, now and then, two eyes;
+  -- in a flash of lightning, all of them.
   local th = self.thief
   local behind = th and not th.gone and th.y < py
   local function draw_thief()
@@ -821,9 +878,15 @@ function Room:draw(px, py, fx, fy, t, walk)
       end
       return
     end
-    if light.lit(L, sx, sy - 6) then
+    if light.lit(L, sx, sy - 6) or world.bolt then
       local stride = (th.step * 3) // 1 % 4
       local tface = sprites.facing(th.fx, th.fy)
+      if th.kind == "statue" and th.lit_t >= POSE then
+        -- Posing as a sculpture, on a plinth that isn't there by day.
+        g.fill_rect(sx - 7, sy - 2, 14, 4, FACE_L)
+        g.fill_rect(sx - 7, sy - 2, 14, 1, WALL_L)
+        sy, stride, tface = sy - 2, 0, "down"
+      end
       sprites.draw("thief", tface, stride == 1 and 1 or (stride == 3 and 2 or 0), sx, sy)
       -- The loot: the stolen work, frame and all, under an arm.
       local lx = sx + (tface == "left" and -9 or 4)
@@ -843,7 +906,7 @@ function Room:draw(px, py, fx, fy, t, walk)
     elseif th.alert then
       g.fill_rect(sx - 3, sy - 31, 7, 11, ui.INK)
       g.text("!", sx - 2, sy - 29, ui.BG)
-    elseif (t * 0.7 + th.x) % 3 < 0.35 then
+    elseif world.eyes and (t * 0.7 + th.x) % 3 < 0.35 then
       local dx, dy = th.x - px, th.y - py
       if dx * dx + dy * dy < 81 then
         g.pixel(sx - 2, sy - 11, ui.INK); g.pixel(sx + 1, sy - 11, ui.INK)

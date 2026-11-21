@@ -14,6 +14,8 @@ local sprites = require("sprites")
 local story = require("story")
 local desk = require("desk")
 local night = require("night")
+local caper = require("caper")
+local vignette = require("vignette")
 local record = require("record")
 local net = require("net")
 local DATA = require("data.mosa_data")
@@ -74,9 +76,10 @@ end
 
 local rgb = g.rgb
 
-local function flash(c, seconds)
+-- `chase`: a light runs along the row instead of the whole row glowing.
+local function flash(c, seconds, chase)
   local r, gg, b = rgb(c)
-  pulse = { r, gg, b, t + (seconds or 0.5) }
+  pulse = { r, gg, b, t + (seconds or 0.5), chase }
 end
 
 -- In M.O.S.A.'s arcade cabinet (the museum runs this app on a screen in a room)
@@ -146,11 +149,13 @@ end
 -- Later break-ins (opts.n thieves) skip rooms that already have a thief
 -- (opts.taken) and the room the janitor is standing in (opts.here). opts.rng
 -- seeds a day's first night, so everyone meets the same heist that day.
+-- opts.extra adds to the first break-in (a gala); opts.wave sets what kinds
+-- of thief come (caper.kind).
 local THIEVES = 3
 local function plan_heist(opts)
   opts = opts or {}
   local rand = opts.rng or rng
-  local count, taken = opts.n or THIEVES, opts.taken or {}
+  local count, taken = opts.n or (THIEVES + (opts.extra or 0)), opts.taken or {}
   local start = rooms_by_id[DATA.start]
   local near = {}
   if not opts.n then for _, d in ipairs(start and start.doors or {}) do near[d.to] = true end end
@@ -166,7 +171,8 @@ local function plan_heist(opts)
   local function take(pick)
     for i, o in ipairs(options) do if o == pick then table.remove(options, i); break end end
     local art = pick.room.art
-    plan[#plan + 1] = { room = pick.room.id, home = pick.room.id, work = art[rand:int(#art)].w }
+    plan[#plan + 1] = { room = pick.room.id, home = pick.room.id, work = art[rand:int(#art)].w,
+      kind = caper.kind(rand, opts.wave or 1, #plan + 1) }
   end
   local close = {}
   for _, o in ipairs(options) do if o.near then close[#close + 1] = o end end
@@ -182,10 +188,12 @@ local Splash, Title, Lanyard, Intro, Briefing, Game, Pause, Card, ArtCard, Code,
 -- Tonight's first heist: the day's first shift is seeded by the date, so
 -- every janitor meets the same break-in that day; later shifts are new.
 local function today() return night.day(sys.time and sys.time()) end
+local function weather() return caper.night(today()) end
 local function tonight_plan()
   local day = today()
-  if day and not record.worked(day) then return plan_heist({ rng = util.rng((day * 7919 + 104729) & 0x7FFFFFFF) }) end
-  return plan_heist()
+  local extra = weather().extra
+  if day and not record.worked(day) then return plan_heist({ rng = util.rng((day * 7919 + 104729) & 0x7FFFFFFF), extra = extra }) end
+  return plan_heist({ extra = extra })
 end
 
 -- !LAMPs: the badge's own currency. The app can award them within the
@@ -203,7 +211,8 @@ local function earn(game, amount, why)
 end
 
 Intro, Briefing = story.scenes({ top = top, push = push, pop = pop, flash = flash, plan_heist = tonight_plan,
-  works_by_idx = works_by_idx, rooms_by_id = rooms_by_id, start = function(plan) push(Game.new(plan)) end })
+  works_by_idx = works_by_idx, rooms_by_id = rooms_by_id, start = function(plan) push(Game.new(plan)) end, weather = weather })
+local Holding, CallingCard, InTheAct = vignette.scenes({ top = top, push = push, pop = pop, flash = flash })
 Dawn, HowTo = desk.scenes({ DATA = DATA, push = push, pop = pop, invalidate = invalidate, works_by_idx = works_by_idx,
   needs_x = function() return needs_x end,
   report_code = function()
@@ -327,7 +336,9 @@ function Title:draw()
   -- The security desk's board: tonight, or the streak and tomorrow.
   local day, st = today(), record.state
   local board
-  if day and not record.worked(day) then board = "TONIGHT: A BREAK-IN"
+  if day and not record.worked(day) then
+    local w = weather()
+    board = "TONIGHT: " .. (w.id == "clear" and "A BREAK-IN" or w.name)
   elseif day then
     local streak = record.streak_now(day)
     board = streak > 1 and ("NIGHT " .. st.nights .. ", " .. streak .. " IN A ROW") or ("NIGHT " .. st.nights .. ". MORE TOMORROW")
@@ -414,12 +425,17 @@ end
 -- ── the janitor's walk ──────────────────────────────────────────────────────
 Game = { name = "game" }
 Game.__index = Game
+-- kind_of: work idx -> the kind of thief who has it. cell: the kinds caught
+-- tonight, in order (vignette.lua draws them behind bars).
 function Game.new(plan)
+  local w = weather()
   local s = setmetatable({ built = {}, fx = 0, fy = -1, armed = false, step = 0, heist = {}, plan = plan or {},
-    caught = 0, tonight = { seen = 0, bottles = 0 }, night = night.new(), pace = 1 }, Game)
-  for _, h in ipairs(s.plan) do s.heist[h.room] = h.work end
+    caught = 0, tonight = { seen = 0, bottles = 0 }, night = night.new(), pace = 1 + (w.pace or 0),
+    weather = w, kind_of = {}, cell = {}, wave_caught = 0, storm = 8 }, Game)
+  for _, h in ipairs(s.plan) do s.heist[h.room] = h.work; s.kind_of[h.work] = h.kind end
   night.begin_wave(s.night, #s.plan)
   s.ok = function(to) return s:open_to(to) end
+  world.eyes, world.hear, world.bolt = w.eyes ~= false, w.hear or 1, false
   return s
 end
 
@@ -442,18 +458,42 @@ function Game:leave()
 end
 
 --- The desk radios a break-in: the next wave, sized to how the last went.
+--- The wave was planned when the last one was cleared (so a calling card
+--- could name it); a janitor waiting in a room it targets catches that thief
+--- in the act.
 function Game:break_in()
   local n = self.night
-  local size, pace = night.next_wave(n.wave + 1, n)
-  local here = self.room and self.room.data.id
-  local plan = plan_heist({ n = size, taken = self.heist, here = here })
-  if #plan == 0 then return end
-  self.pace = pace
+  local plan, here = self.next, self.room and self.room.data.id
+  self.next, self.card, self.wave_caught = nil, nil, 0
+  if not plan then
+    local size, pace = night.next_wave(n.wave + 1, n)
+    self.pace = pace + (self.weather.pace or 0)
+    plan = plan_heist({ n = size, taken = self.heist, here = here, wave = n.wave + 1 })
+  end
+  local foiled = 0
+  for i = #plan, 1, -1 do
+    local h = plan[i]
+    if h.room == here then
+      table.remove(plan, i)
+      foiled, self.wave_caught = foiled + 1, self.wave_caught + 1
+      n.prevented = n.prevented + 1
+      self.cell[#self.cell + 1] = h.kind
+      earn(self, 3, "Caught in the act")
+      push(InTheAct.new(works_by_idx[h.work], h.kind))
+    end
+  end
+  if #plan == 0 then
+    -- Nobody else came: a wave of one, already over.
+    if foiled > 0 then night.begin_wave(n, 0); self:cleared() end
+    return
+  end
+  local pace = self.pace
   for _, h in ipairs(plan) do
     self.plan[#self.plan + 1] = h
     self.heist[h.room] = h.work
+    self.kind_of[h.work] = h.kind
     local built = self.built[h.room]
-    if built then built:break_in(works_by_idx[h.work], pace, rng) end
+    if built then built:break_in(works_by_idx[h.work], pace, rng, h.kind) end
   end
   night.begin_wave(n, #plan)
   local cam = string.format("CAM %02d", rng:int(12))
@@ -479,6 +519,34 @@ function Game:dawn(out)
 end
 
 function Game:thieves_left() return #self.plan - self.caught end
+
+--- A wave is over. The next is planned now, so one of the caught can leave a
+--- calling card for it (and the calm is longer, to act on it). The holding
+--- cell plays once the janitor is back on their feet (Game:resume).
+function Game:cleared()
+  local n = self.night
+  night.wave_cleared(n)
+  local card
+  if n.calm then
+    local size, pace = night.next_wave(n.wave + 1, n)
+    self.pace = pace + (self.weather.pace or 0)
+    local plan = plan_heist({ n = size, taken = self.heist, here = self.room and self.room.data.id, wave = n.wave + 1 })
+    local h = plan[1]
+    if h then
+      self.next = plan
+      card = caper.card(works_by_idx[h.work], rooms_by_id[h.room], DATA.rooms, rng, h.kind)
+      n.calm = math.max(n.calm, math.min(n.min + caper.CALM, night.DAWN - 16))
+    end
+  end
+  self.card, self.holding = card, { new = self.wave_caught, card = card }
+end
+function Game:resume()
+  local h = self.holding
+  if h and top() == self then
+    self.holding = nil
+    push(Holding.new(self.cell, h.new, h.card, night.clock(self.night.min)))
+  end
+end
 
 function Game:stamp(room_id, goal, quiet)
   if record.stamp(room_id, goal.id) then
@@ -506,7 +574,7 @@ function Game:travel(to, from)
     local room = self.built[to]
     if not room then
       room = world.build(data, { rng = rng, stock = stocker(net.nearby() > 0), pause = coroutine.yield,
-        works = works_by_idx, heist = self.heist[to], pace = self.pace })
+        works = works_by_idx, heist = self.heist[to], kind = self.kind_of[self.heist[to] or -1], pace = self.pace })
       self.built[to] = room
     else
       room:resume(coroutine.yield)
@@ -549,7 +617,7 @@ function Game:arrive(data)
   end
   local th = self.room.thief
   if th and not th.gone and not th.caught then
-    say("SOMEONE IS IN HERE", "Sweep the dark with your light.", 2.6)
+    say("SOMEONE IS IN HERE", caper.TELL[th.kind] or caper.TELL.creep, 2.6)
   elseif self.iris.warped then
     say(night.clock(self.night.min), "Twenty minutes on the map.", 2)
   end
@@ -562,8 +630,12 @@ function Game:fled(door)
   local to = door.to
   self.heist[room.data.id], self.heist[to] = nil, th.work.idx
   for _, h in ipairs(self.plan) do if h.work == th.work.idx then h.room = to end end
-  if self.built[to] then self.built[to]:let_in(th.work, room.data.id) end
-  if th.seen then say("THEY GOT AWAY", "Into " .. room_name(to) .. ". Go after them.", 3)
+  -- A swindler who has played their trick has no second dummy.
+  local kind = th.tricked and "creep" or th.kind
+  self.kind_of[th.work.idx] = kind
+  if self.built[to] then self.built[to]:let_in(th.work, room.data.id, kind) end
+  if th.heat > world.HEAT * 0.6 then say("SO CLOSE", "They slipped into " .. room_name(to) .. ".", 3)
+  elseif th.seen then say("THEY GOT AWAY", "Into " .. room_name(to) .. ". Go after them.", 3)
   else say("FOOTSTEPS", "Someone ran into " .. room_name(to) .. ".", 3) end
   flash(th.work.tint, 0.6)
 end
@@ -595,16 +667,19 @@ function Game:recovered(work)
   self.caught = self.caught + 1
   record.catch()
   if record.see(work) then self.tonight.seen = self.tonight.seen + 1 end
-  flash(work.tint, 1.4)
+  flash(work.tint, 1.4, true)
   local n = self.night
   n.recovered = n.recovered + 1
+  local th = self.room.thief
+  self.cell[#self.cell + 1] = th and th.kind or "creep"
+  self.wave_caught = self.wave_caught + 1
   earn(self, 3, "Recovered " .. work.title)
   if self:thieves_left() == 0 then
-    night.wave_cleared(n)
-    say("ALL CLEAR, FOR NOW", n.calm and "The desk will radio if anyone else gets in." or "Dawn is close. Keep walking.", 3.4)
+    self:cleared()
+    if not n.calm then say("ALL CLEAR, FOR NOW", "Dawn is close. Keep walking.", 3.4) end
   end
-  -- A beat to watch them go before the card comes up.
-  self.catching = { work = work, til = t + 0.7 }
+  -- A beat to watch the work rise out of their arms before the card comes up.
+  self.catching = { work = work, til = t + 0.7, t0 = t, x = th and th.x, y = th and th.y }
 end
 
 function Game:update(dt)
@@ -626,7 +701,7 @@ function Game:update(dt)
     if t >= self.catching.til then
       local work = self.catching.work
       self.catching = nil
-      push(ArtCard.new(work, "recovered", room.data))
+      push(ArtCard.new(work, "recovered", room.data, self.cell))
     end
     return
   end
@@ -639,6 +714,12 @@ function Game:update(dt)
   elseif ev == "sighting" then self:sighting()
   elseif ev == "warning" then say("05:00", "An hour to dawn. They leave with the light.", 3)
   elseif ev == "hour" and not toast then say(night.clock(n.min), night.chime(n.min), 2.2) end
+  if self.weather.storm then
+    -- Lightning, every so often: for a blink the whole room shows its hands.
+    self.storm = self.storm - dt
+    if self.storm <= 0 then self.storm, self.bolt = 7 + rng:float() * 9, t + 0.2; flash(ui.INK, 0.3) end
+    world.bolt = self.bolt ~= nil and t < self.bolt
+  end
   local mx, my = 0, 0
   if held.left then mx = mx - 1 end
   if held.right then mx = mx + 1 end
@@ -676,6 +757,9 @@ function Game:update(dt)
     return
   elseif what == "fled" then
     self:fled(door)
+  elseif what == "dummy" then
+    say("A DUMMY", "They dropped a fake. The real one is still on them.", 2.6)
+    flash(ui.INK, 0.3)
   end
 
   -- Bottles are picked up by walking into them.
@@ -744,6 +828,17 @@ function Game:draw()
         math.floor(280 * (ir.out and (1 - k) * (1 - k) or k * k)), ir.out or ir.warped)
     end
   end
+  local c = self.catching
+  if c and c.x then
+    -- The work rises out of their arms, back to the light.
+    local k = math.min(1, (t - c.t0) / 0.6)
+    local pw, ph = ui.size(c.work)
+    local sx = math.floor(c.x * world.TILE) - self.cx - pw // 2
+    local sy = math.floor(c.y * world.TILE) - self.cy - 30 - math.floor(26 * (1 - (1 - k) ^ 2)) - ph
+    g.fill_rect(sx - 2, sy - 2, pw + 4, ph + 4, ui.PAPER)
+    ui.thumb(c.work, sx, sy, 1)
+  end
+  if world.bolt then g.rect(0, 0, ui.W, ui.H, ui.INK); g.rect(1, 1, ui.W - 2, ui.H - 2, ui.INK) end
   if top() ~= self then return end
   if self.banner and t < self.banner then
     local name = room.data.name:upper()
@@ -797,7 +892,8 @@ ArtCard = { name = "artcard" }
 ArtCard.__index = ArtCard
 ArtCard.under = true
 ArtCard.static = true
-function ArtCard.new(work, mode, room) return setmetatable({ work = work, mode = mode, room = room }, ArtCard) end
+-- `cell`: tonight's catches, shown behind bars under a recovered work.
+function ArtCard.new(work, mode, room, cell) return setmetatable({ work = work, mode = mode, room = room, cell = cell }, ArtCard) end
 function ArtCard:draw()
   local w = self.work
   ui.slab(14, 6, 292, 202)
@@ -805,6 +901,7 @@ function ArtCard:draw()
   ui.tracked(self.mode == "recovered" and "RECOVERED" or "ON THE WALL", 22, 9, ui.PAPER, 1, 2)
   g.text_right(ui.fit(room_name(w.room):upper(), 150), 298, 9, ui.PAPER)
   ui.mat(w, 24, 28, 128, 128)
+  if self.cell then vignette.cell(24, 160, 128, 26, self.cell, 0) end
   local x, cw = 162, 136
   local y = 30
   local size = (#w.title * 12 <= cw) and 2 or 1
@@ -882,6 +979,7 @@ function Pause.new(game)
       end },
     { "CLOCK OUT", function() pop(); game:dawn(true) end },
   }
+  if game.card then table.insert(s.items, 2, { "THE CALLING CARD", function() push(CallingCard.new(game.card)) end }) end
   return s
 end
 function Pause:draw()
@@ -895,7 +993,8 @@ function Pause:draw()
   g.text(ui.fit(game.room.data.name, 240, 2), 36, 30, ui.INK, 2)
   local left, total = game:thieves_left(), #game.plan
   if total == 0 then g.text("A quiet night", 36, 52, ui.MUTED)
-  elseif left == 0 then g.text(n.calm and "All clear, for now" or "Every work is back on its wall", 36, 52, ui.ACCENT)
+  elseif left == 0 then
+    g.text(game.card and "All clear. They left a calling card" or (n.calm and "All clear, for now" or "Every work is back on its wall"), 36, 52, ui.ACCENT)
   else g.text(plural(left, "thie" .. (left == 1 and "f" or "ve")) .. " still in the museum", 36, 52, ui.INK) end
   local art = game.room.art
   if #art > 0 then
@@ -908,7 +1007,7 @@ function Pause:draw()
   local near = net.nearby()
   g.text(near == 0 and "No other janitors in range" or (plural(near, "other janitor") .. " on shift nearby"),
     36, 76, near > 0 and ui.ACCENT or ui.MUTED)
-  menu(self.items, 32, 98, self.sel, 17, 256)
+  menu(self.items, 32, 98, self.sel, #self.items > 6 and 15 or 17, 256)
 end
 function Pause:update(dt)
   -- Janitors come and go; refresh the count once a second.
@@ -1167,7 +1266,14 @@ local function leds(dt)
   if pulse and t < pulse[4] then
     local k = (pulse[4] - t) * 2
     if k > 1 then k = 1 end
-    led.fill(math.floor(pulse[1] * k), math.floor(pulse[2] * k), math.floor(pulse[3] * k))
+    if pulse[5] then
+      -- A chase: a light runs along the row, trailing.
+      local n, head = led.count or 8, t * 14
+      for i = 1, n do
+        local q = math.max(0, 1 - ((head - i) % n) / 3) * k
+        led.set(i, math.floor(pulse[1] * q), math.floor(pulse[2] * q), math.floor(pulse[3] * q))
+      end
+    else led.fill(math.floor(pulse[1] * k), math.floor(pulse[2] * k), math.floor(pulse[3] * k)) end
     return
   end
   pulse = nil
@@ -1345,8 +1451,8 @@ mosa_debug = {
   nearby = function() return net.nearby() end,
   night = function()
     local n = mosa_debug.game().night
-    return string.format("min=%d wave=%d recovered=%d lost=%d calm=%s lamps=%d", math.floor(n.min), n.wave, n.recovered,
-      n.lost, n.calm and tostring(math.floor(n.calm)) or "-", n.lamps)
+    return string.format("min=%d wave=%d recovered=%d lost=%d calm=%s lamps=%d prevented=%d", math.floor(n.min), n.wave,
+      n.recovered, n.lost, n.calm and tostring(math.floor(n.calm)) or "-", n.lamps, n.prevented)
   end,
   clock = function(min) mosa_debug.game().night.min = min end,
   break_in = function() mosa_debug.game():break_in() end,
@@ -1368,9 +1474,12 @@ mosa_debug = {
       if not b.taken then gm.px, gm.py = b.x, b.y; return b.piece.title end
     end
   end,
-  -- Stand a couple of tiles from the thief in this room, facing them.
-  face_thief = function()
+  card = function() local gm = mosa_debug.game(); return gm.card and gm.card.body .. " / " .. gm.card.room end,
+  -- Stand a couple of tiles from the thief in this room, facing them (and
+  -- make them `kind`, a creep by default, who can be caught by holding still).
+  face_thief = function(kind)
     local gm = mosa_debug.game()
+    if gm.room.thief then gm.room.thief.kind = kind or "creep" end
     local th = gm.room.thief
     if not th or th.gone then return false end
     for _, d in ipairs({ { 0, 2 }, { 0, -2 }, { 2, 0 }, { -2, 0 }, { 0, 1 }, { 1, 0 }, { 0, -1 }, { -1, 0 } }) do

@@ -27,6 +27,11 @@ async function clockIn(b) {
   assert.match(state(b), /scene=game/);
 }
 
+// Past the holding cell (and any calling card) a cleared break-in plays, back to the walk.
+async function toWalk(b) {
+  for (let i = 0; i < 6 && !/scene=game/.test(state(b)); i++) { await b.press('b'); await b.frames(2); }
+}
+
 /** The doors of a room in the data module, as room ids. */
 function doorsOf(id) {
   const at = data.indexOf(`id="${id}"`);
@@ -122,8 +127,9 @@ test('every room can be entered, walked and drawn, within the budgets', async ()
   const kb = Number(b.lua('return __gc()'));
   // The badge gives an app 6 MB; Night Shift keeps to well under 1 MB (64-bit
   // Lua here roughly doubles table cost vs the badge's 32-bit build, and the
-  // 140 KB canvas lives outside this count).
-  assert.ok(kb < 640, `heap ${kb.toFixed(0)} KB after visiting every room`);
+  // 140 KB canvas lives outside this count). 0.7.0 sat at 636 KB; the thieves'
+  // kinds, the weather, calling cards and the vignettes added ~40 KB of code.
+  assert.ok(kb < 704, `heap ${kb.toFixed(0)} KB after visiting every room`);
   assert.deepEqual(b.errors, []);
 });
 
@@ -154,6 +160,8 @@ test('a thief held in the beam drops the work, and catching them all clears the 
     assert.match(b.qr()?.text ?? '', /^https:\/\//);
     await b.press('b'); await b.frames(2);
   }
+  assert.match(state(b), /scene=holding/, 'a cleared break-in: the thieves go behind bars');
+  await toWalk(b);
   assert.match(state(b), /scene=game/, 'a cleared wave keeps the night going');
   assert.match(String(b.lua('return mosa_debug.night()')), /recovered=3 lost=0 calm=\d+/, 'and the desk waits to radio the next');
   b.lua(`mosa_debug.clock(${30 * 60})`); await b.frames(4);
@@ -456,6 +464,7 @@ test('clearing a break-in brings the next one, sized by the desk', async () => {
     for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
     await b.press('b'); await b.frames(2);
   }
+  await toWalk(b);
   const calm = Number(/calm=(\d+)/.exec(nightOf(b))[1]);
   b.lua(`mosa_debug.clock(${calm + 1})`); await b.frames(3);
   assert.match(nightOf(b) + ' ' + state(b), /wave=2/, 'the desk radios a second wave');
@@ -466,6 +475,82 @@ test('clearing a break-in brings the next one, sized by the desk', async () => {
   assert.equal(b.lua('return mosa_debug.face_thief()'), true, 'and its thief is in the room the desk named');
   for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
   assert.match(state(b), /scene=artcard/);
+  assert.deepEqual(b.errors, []);
+});
+
+// Clear tonight's first break-in, thief by thief, and come back to the walk.
+async function clearFirstWave(b) {
+  for (const id of String(b.lua('return mosa_debug.heist()')).split(',')) {
+    b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
+    b.lua('mosa_debug.face_thief()');
+    for (let i = 0; i < 100 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+    await b.press('b'); await b.frames(2);
+  }
+}
+
+test('a cleared break-in leaves a calling card; waiting in its room catches the next thief in the act', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  await clearFirstWave(b);
+  assert.match(state(b), /scene=holding/);
+  for (let i = 0; i < 200 && !/scene=callingcard/.test(state(b)); i++) await b.frames(1);
+  assert.match(state(b), /scene=callingcard/, 'one of them flicks a card at the camera');
+  const [body, room] = String(b.lua('return mosa_debug.card()')).split(' / ');
+  assert.ok(ROOMS.includes(room), `the card names a real room (${room})`);
+  assert.match(body, /one door from|starts with|works? hangs?/, `with a clue to find it by: ${body}`);
+  await toWalk(b);
+  // The clipboard keeps the card.
+  await b.press('b'); await b.frames(2);
+  await b.press('down'); await b.press('a'); await b.frames(2);
+  assert.match(state(b), /scene=callingcard/);
+  await toWalk(b);
+  // Be there when they come.
+  b.lua(`mosa_debug.travel("${room}")`); await b.frames(2);
+  const calm = Number(/calm=(\d+)/.exec(nightOf(b))[1]);
+  b.lua(`mosa_debug.clock(${calm + 1})`); await b.frames(3);
+  assert.match(state(b), /scene=intheact/, 'caught in the act');
+  assert.match(nightOf(b), /prevented=1/);
+  assert.ok(!String(b.lua('return mosa_debug.heist()')).split(',').slice(3).includes(room), 'nothing was taken from that room');
+  for (let i = 0; i < 200 && !/scene=(game|holding)/.test(state(b)); i++) await b.frames(1);
+  await toWalk(b);
+  assert.match(state(b), /scene=game/);
+  assert.deepEqual(b.errors, []);
+});
+
+test('the kinds of thief: a statue poses in a steady light, a swindler drops a dummy', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  const id = String(b.lua('return mosa_debug.heist()')).split(',')[0];
+  b.lua(`mosa_debug.travel("${id}")`); await b.frames(2);
+  assert.equal(b.lua('return mosa_debug.face_thief("statue")'), true);
+  await b.frames(80);
+  assert.match(state(b), /scene=game/, 'a statue held in a steady beam just poses');
+  // Look away, then back: only a fresh look counts.
+  for (let i = 0; i < 12 && !/scene=artcard/.test(state(b)); i++) {
+    b.lua('local gm = mosa_debug.game(); gm.fx, gm.fy = -gm.fx, -gm.fy'); await b.frames(3);
+    b.lua('local gm = mosa_debug.game(); gm.fx, gm.fy = -gm.fx, -gm.fy');
+    for (let j = 0; j < 12 && !/scene=artcard/.test(state(b)); j++) await b.frames(1);
+  }
+  for (let i = 0; i < 40 && !/scene=artcard/.test(state(b)); i++) await b.frames(1);
+  assert.match(state(b), /scene=artcard/, 'caught by looking again and again');
+  await b.press('b'); await b.frames(2);
+
+  const id2 = String(b.lua('return mosa_debug.heist()')).split(',')[1];
+  b.lua(`mosa_debug.travel("${id2}")`); await b.frames(2);
+  assert.equal(b.lua('return mosa_debug.face_thief("swindler")'), true);
+  for (let i = 0; i < 60 && !b.lua('return mosa_debug.game().room.dummy ~= nil'); i++) await b.frames(1);
+  assert.equal(b.lua('return mosa_debug.game().room.dummy ~= nil'), true, 'the first time, a dummy');
+  assert.match(state(b), /scene=game/, 'and they still have the work');
+
+  // A dodger weaves out of the beam, in a storm: lightning shows them for a blink.
+  const id3 = String(b.lua('return mosa_debug.heist()')).split(',')[2];
+  b.lua(`mosa_debug.travel("${id3}")`); await b.frames(2);
+  b.lua('local gm = mosa_debug.game(); gm.weather = require("caper").NIGHTS[2]; gm.storm = 0.05');
+  assert.equal(b.lua('return mosa_debug.face_thief("dodger")'), true);
+  b.lua('mosa_debug.game().room.thief.stay = nil');
+  let bolt = false;
+  for (let i = 0; i < 30; i++) { await b.frames(1); bolt = bolt || b.lua('return require("world").bolt') === true; }
+  assert.ok(bolt, 'the lightning struck');
   assert.deepEqual(b.errors, []);
 });
 

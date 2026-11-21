@@ -6,9 +6,37 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 ## [Unreleased]
 
 Night Shift in the museum: an arcade cabinet in the M.O.S.A. Janitor Room
-plays the same app, for visitors without a badge.
+plays the same app, for visitors without a badge. And the thieves have
+characters, the nights have weather, and the caught leave calling cards.
 
 ### Added
+
+- Four kinds of thief. The creep runs from the light, as before. The statue
+  freezes and poses on a plinth: only a fresh look counts, so look away and
+  back. The dodger weaves across the beam: back them into a wall. The
+  swindler drops a dummy the first time and bolts with the real work. The
+  night's first thief is always a creep. Walking into a room, you hear which
+  kind is in there.
+- Tonight's weather, the same for every janitor that day, on the title's desk
+  board and in the briefing: a clear night, a storm (lightning shows who is
+  hiding, for a blink), a full moon (bolder, quicker thieves who hear less),
+  no moon (no eyes glint in the dark: the LEDs are your guide) or a gala (one
+  more thief in the first break-in).
+- The holding cell. Clear a break-in and CAM 00 shows the thieves walking into
+  the cell and the bars coming down, everyone caught tonight in there,
+  passing the time the way their kind does. A RECOVERED card shows the cell
+  under the work, and the dawn report shows who was held tonight.
+- Calling cards. One of the caught flicks a card at the camera: who comes next
+  and a clue to the room (a neighbour on the map, the first letter of its
+  name or how many works hang there; what they're after, by its set, artist,
+  title or colour), all from the synced data. The calm is longer, and the
+  clipboard keeps the card. Be in that room when the break-in comes and you
+  catch them in the act: the work never leaves its wall, and the dawn report
+  counts it.
+- A catch lifts the work out of the thief's arms back into the light, and the
+  LEDs run a chase in its colour. A thief who gets away with the bar almost
+  full: SO CLOSE.
+- How to play has a page on the thieves.
 
 - `pnpm build:web`: a static browser build of the app and its host
   (`dist/web/night-shift-<version>-<hash>/`), which the museum pins and serves
@@ -23,6 +51,9 @@ plays the same app, for visitors without a badge.
   Node host the tests use, and a browser host
   ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#three-hosts-one-core)).
 - The shift report says it carries your night into M.O.S.A.
+- The test's heap guard on the host is 704 KB (was 640). 0.7.0 sat at 636 KB;
+  the new modules (`caper.lua`, `vignette.lua`) bring it to ~676 KB, about
+  20 KB on the badge's 32-bit build, of its 6 MB.
 
 ## [0.7.0] - 2026-11-21
 
