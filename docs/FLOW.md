@@ -36,8 +36,8 @@ flowchart TD
     FIND -->|QR| PIECE["mosa.center/at/find/&lt;c&gt;/&lt;p&gt;"]
     ART -->|QR| WORK[The work's own page<br/>or its room]
     CLEAR -->|QR| REPORT
-    REC -->|QR| REPORT["mosa.center/at/defcon?shift=&lt;code&gt;"]
-    LANY -->|QR| SITE["mosa.center/at/defcon"]
+    REC -->|QR| REPORT["mosa.center/at/bp26?shift=&lt;code&gt;"]
+    LANY -->|QR| SITE["mosa.center/at/bp26"]
   end
 
   subgraph Museum["4 · The museum, in full resolution"]
@@ -109,9 +109,9 @@ light, sized for a phone at arm's length:
 | On the badge | QR target | Exists today? |
 | --- | --- | --- |
 | A found bottle | `mosa.center/at/find/bottle/<piece>`, MOSA's canonical find link | **Yes**: lands in front of that find |
-| A work, up close | The work's own link from MOSA's hung-works data (its Mallow or 6529 page); else its room, else `/at/defcon` | **Yes**. Sirials open the museum: MOSA has no per-work link for them yet |
-| Lanyard, About | `mosa.center/at/defcon` | Needs a curated link in the console (Links → New): kind *room* or *entrance*, welcome copy. Until then it opens the Lobby as usual |
-| Shift report | `mosa.center/at/defcon?shift=<code>` | Link works now; reading `shift` is the next museum change |
+| A work, up close | The work's own link from MOSA's hung-works data (its Mallow or 6529 page); else its room's curated link, else the museum | **Yes**. Sirials open their room or the museum until MOSA's `/at/work/<id>` (lands in viewing mode) is built |
+| Lanyard, About | The Janitor Room's curated link (`mosa.center/at/bp26`), found by the sync; else the museum | **Yes**. Nothing to author for the badge |
+| Shift report | The same link plus `?shift=<code>` | **Yes**: the museum reads `shift` on any path |
 
 Every URL the badge prints is checked at sync time with MOSA's own link
 parser (`apps/frontend/src/lib/linkPaths.ts`), so the badge can't print a link
@@ -126,7 +126,7 @@ collect. The badge's job is done once they arrive.
 What the museum can add to close the loop (specified in
 [MOSA-INTEGRATION.md](MOSA-INTEGRATION.md)):
 
-1. A `/at/defcon` welcome for badge visitors (console only, no code).
+1. A welcome for badge visitors: the Janitor Room's own link (`/at/bp26`).
 2. Read `?shift=`: "You swept 7 rooms and found 12 bottles on the night
    shift", and offer a free one-per-wallet **Night Shift** commemorative
    collectible through the existing free-find path.

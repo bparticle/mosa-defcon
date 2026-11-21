@@ -5,6 +5,13 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+### Fixed
+
+- No QR leads to `mosa.center/at/defcon` any more, a link the museum never
+  had. The Lanyard, About and shift-report QRs open the Janitor Room
+  (`/at/bp26`), and a work without a page of its own opens its room's link,
+  else the museum.
+
 ## [0.6.1] - 2026-11-20
 
 The same game as 0.6.0, resubmitted to the store with a request for a daily

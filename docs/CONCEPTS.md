@@ -129,8 +129,7 @@ is real MOSA content.
 ## The plan
 
 1. **Now (v0.1, this repo):** A + B + C (badge side) + D. One app, `mosa`,
-   installable from the App Store. No MOSA code changes required; one curated
-   link (`/at/defcon`) to create in the console.
+   installable from the App Store. No MOSA code changes required.
 2. **Next:** the museum reads `?shift=` and welcomes badge visitors; booth
    beacon (E); `/at/room/<id>` canonical links so badge links land in their room.
 3. **Then:** upstream `badge.identity` (F) and the pocket gallery (G).

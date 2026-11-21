@@ -385,6 +385,12 @@ async function main() {
     if (l.enabled && l.kind === 'room' && !roomLinks[l.ref] && !l.opensAt) roomLinks[l.ref] = linkUrl(`/at/${l.slug}`);
   }
 
+  // The badge's own way in: the Janitor Room's curated link (Night Shift is the
+  // janitor's story), else the museum itself. Nothing to author for the badge.
+  const janitorRoom = GENERATED_ROOMS.find((r) => /janitor/i.test(r.name))?.id;
+  const home = roomLinks[janitorRoom] ?? `${SITE}/`;
+  if (!roomLinks[janitorRoom]) log(`no curated link for the Janitor Room (${janitorRoom ?? 'not found'}); home is ${home}`);
+
   // Where finds hunt and lie wild, per room — straight from the catalogue.
   const huntByRoom = {};
   for (const c of catalog.collections) {
@@ -493,7 +499,7 @@ async function main() {
     const file = path.join(PUBLIC, w.image);
     if (!fs.existsSync(file)) { log(`${w.key}: missing image ${w.image}; skipped`); continue; }
     const sp = await pixelizeArt(fs.readFileSync(file), { aspect: w.aspect });
-    let url = roomLinks[w.room] ?? linkUrl('/at/defcon');
+    let url = roomLinks[w.room] ?? `${SITE}/`;
     if (/^https:\/\/\S+$/.test(w.link ?? '') && w.link.length <= 200) url = w.link;
     works.push({
       idx, room: w.room, title: ascii(w.title), artist: ascii(w.artist), set: ascii(w.collection) || undefined,
@@ -549,7 +555,7 @@ async function main() {
     schema: DATA_SCHEMA,
     source: { mosa: source.commit.slice(0, 12), rooms: roomsHash, catalog: catalogHash },
     site: SITE,
-    home: linkUrl('/at/defcon'),
+    home,
     start: startRoom,
     thumb: { w: THUMB_W, h: THUMB_H },
     map: { w: map.w, h: map.h },

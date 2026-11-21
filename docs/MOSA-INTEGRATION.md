@@ -53,13 +53,12 @@ the sync reads a local checkout.
 
 In order of value per effort. None are required for the badge app to work.
 
-### 1. A `/at/defcon` link (console, no code)
+### 1. The badge's way in — done, nothing to author
 
-Console → Links → New. Slug `defcon`; target: room `room12` (the Janitor
-Room, fitting the Night Shift story) or the Lobby; host Sirius Crocodile;
-welcome along the lines of *"Off the night shift? Welcome to M.O.S.A."*. Until
-it exists the badge's Lanyard QR still works: an unknown `/at/` slug opens the
-museum as usual (`docs/LINKS.md`).
+The sync takes the Janitor Room's curated room link (`/at/bp26`, found by the
+room's name) as the badge's home: the Lanyard, About and shift-report QRs. A
+work with no link of its own opens its room's curated link, else the museum.
+`/at/defcon`, a console link that was never made, is no longer printed.
 
 ### 2. Read `?shift=` on arrival — done
 
@@ -79,7 +78,14 @@ Built in `bparticle/mosa` (migration 078, `apps/frontend/docs/BADGE-SHIFT.md`):
   code from a newer badge still reads; the extra bottles are ignored until then.
 - Analytics: a row in `badge_shifts` = arrived from a badge.
 
-### 3. Canonical `/at/room/<roomId>` (both apps, mirrored grammar)
+### 3. `/at/work/<id>`: every work its own link, landing in viewing mode — built in MOSA, badge to follow
+
+Built on `feature/work-links` in `bparticle/mosa` (`apps/frontend/docs/LINKS.md`): `lib/works.ts`
+lists every hung work and pinned Sirial with its id, and `workLinkPath(id)` names it. Next on the badge:
+the sync reads `WALL_WORKS` and prints `workLinkPath` for every work (the art QR becomes the work
+itself, in full resolution), and `parseLinkPath` keeps the sync from printing one before MOSA has it.
+
+### 3b. Canonical `/at/room/<roomId>` (both apps, mirrored grammar)
 
 `room` is already a reserved word in `linkPaths.ts`. Adding the family (mirrored
 byte for byte in `apps/api` and `apps/frontend`, both pinned by their tests)
