@@ -219,7 +219,8 @@ function vignette.scenes(ctx)
       return
     end
     -- In the beam: the wall, the work still on it, and who was reaching for it.
-    local lx, ly = JX + 12, FLOOR - 18
+    local hx, hy = sprites.hand("right")
+    local lx, ly = JX + hx * 3, FLOOR + hy * 3
     local L = light.new(lx + 16, ly + 3, 0.915, -0.405, 300, 0.42, JX, FLOOR - 22, 34)
     for y = math.max(0, L.top), math.min(ui.H - 1, L.bottom) do
       local a1, b1, a2, b2 = light.row(L, y)

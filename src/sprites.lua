@@ -69,10 +69,10 @@ local JANITOR = {
     ".khsssssk.",
     ".khssseSk.",
     ".khsssssk.",
-    "..kwwwwk..",
-    "..kowwok..",
-    "..kooowk..",
-    "..kooosk..",
+    "..kwwwkkk.",
+    "..kokOOOs.",
+    "..kokOOOs.",
+    "..koookkk.",
     "..kooook..",
     "..kooOok..",
     "..koOOok..",
@@ -173,7 +173,30 @@ local function compile(rows, feet, leg)
   return runs
 end
 
-local SETS = { janitor = { JANITOR, "o" }, thief = { THIEF, "p" } }
+-- The janitor before the flashlight comes off its hook (the intro's walk in):
+-- from the side the arm hangs, since there is nothing in the hand to hold up.
+local EMPTY_HANDED = {
+  down = JANITOR.down,
+  up = JANITOR.up,
+  side = {
+    "..kkkk....",
+    ".kcccck...",
+    ".kccccck..",
+    ".kcbbbbbbk",
+    ".khsssssk.",
+    ".khssseSk.",
+    ".khsssssk.",
+    "..kwwwwk..",
+    "..kowwok..",
+    "..kooOOk..",
+    "..kooOOk..",
+    "..kooosk..",
+    "..kooOok..",
+    "..koOOok..",
+  },
+}
+
+local SETS = { janitor = { JANITOR, "o" }, empty_handed = { EMPTY_HANDED, "o" }, thief = { THIEF, "p" } }
 
 --- Draw a figure with its feet at (x, y). `face` is down/up/left/right; `step`
 --- 0 stands, 1 and 2 are strides. `scale` enlarges it (the intro).
@@ -287,8 +310,10 @@ function sprites.facing(fx, fy)
   return fy < 0 and "up" or "down"
 end
 
---- Where the hand that holds the flashlight is, from the feet (scale 1).
-local HAND = { down = { 4, -6 }, up = { -4, -7 }, right = { 3, -6 }, left = { -3, -6 } }
+--- Where the hand that holds the flashlight is, from the feet (scale 1). From
+--- the side the arm is held out at the chest, so the beam starts up there and
+--- not at the hip.
+local HAND = { down = { 4, -6 }, up = { -4, -7 }, right = { 4, -8 }, left = { -5, -8 } }
 function sprites.hand(face)
   local h = HAND[face]
   return h[1], h[2]

@@ -5,6 +5,15 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-11-22
+
+### Changed
+
+- The janitor holds the flashlight up. Seen from the side, the arm now comes
+  forward from the shoulder and the flashlight is held at the chest, where the
+  beam starts, instead of hanging from the hand at the hip. This shows in the
+  game, the intro (still empty-handed on the walk in) and "caught in the act".
+
 ## [0.8.3] - 2026-11-22
 
 ### Fixed

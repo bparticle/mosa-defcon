@@ -51,7 +51,8 @@ function story.scenes(ctx)
     g.clear(ui.BG)
     local x = math.min(1, T / WALK_IN)
     local jx = math.floor(-20 + (HOOK_X - 10 + 20) * x)
-    local lx, ly = jx + 12, FLOOR_Y - 18
+    local hx, hy = sprites.hand("right")
+    local lx, ly = jx + hx * 3, FLOOR_Y + hy * 3
     if T >= CLICK then
       self:dark(T, jx, lx, ly)
       sprites.draw("janitor", "right", 0, jx, FLOOR_Y, 3)
@@ -87,7 +88,7 @@ function story.scenes(ctx)
     local face, step = "right", 0
     if T < WALK_IN then step = (math.floor(T * 6) % 2 == 0) and 1 or 0
     elseif T < TAKE then face = "up" end
-    sprites.draw("janitor", face, step, jx, FLOOR_Y, 3)
+    sprites.draw(T >= TAKE and "janitor" or "empty_handed", face, step, jx, FLOOR_Y, 3)
     if T >= TAKE then
       g.fill_rect(lx, ly, 14, 6, sprites.TORCH)
       g.fill_rect(lx + 14, ly - 1, 3, 8, ui.MUTED)
