@@ -39,9 +39,10 @@ world.hear = 1     -- how far footsteps carry, as a share of HEAR
 world.bolt = false -- lightning: for a blink, everyone in the room shows
 
 --- A thief, with a work under one arm. `kind` is one of caper.lua's four.
-local function new_thief(x, y, work, pace, kind, turn)
+--- `from` is the room they just got away from, if any: never run back into it.
+local function new_thief(x, y, work, pace, kind, turn, from)
   return { x = x, y = y, work = work, fx = 0, fy = 1, heat = 0, step = 0, turn = turn or 0, seen = false,
-    pace = pace, kind = kind or "creep", side = 1, lit_t = 0 }
+    pace = pace, kind = kind or "creep", side = 1, lit_t = 0, from = from }
 end
 
 -- Laying out a room is the heaviest thing the app does, and Solana OS stops
@@ -195,7 +196,7 @@ function world.build(data, opts)
       local work = opts.works[opts.heist]
       local x, y = spot()
       if work and x then
-        r.thief = new_thief(x, y, work, opts.pace, opts.kind)
+        r.thief = new_thief(x, y, work, opts.pace, opts.kind, nil, opts.from)
       end
     end
   end
@@ -314,13 +315,15 @@ local POSE, DODGE, ZIG, BOLT = 0.45, 1.6, 0.6, 2.4
 world.HEAT = HEAT
 
 --- The door a thief would run for: the nearest one on the far side from the
---- janitor, into a room `ok(to)` allows.
+--- janitor, into a room `ok(to)` allows, and never back into the room they
+--- just got away from (the janitor is coming through that door: it is a chase,
+--- not a game of tag; with no other way out they are cornered).
 function Room:escape_door(th, jx, jy, ok)
   local best, bd = nil, nil
   local ax, ay = th.x - jx, th.y - jy
   for _, d in ipairs(self.data.doors) do
     local dx, dy = d.x + 0.5 - th.x, d.y + 0.5 - th.y
-    if dx * ax + dy * ay > 0 and (not ok or ok(d.to)) then
+    if dx * ax + dy * ay > 0 and d.to ~= th.from and (not ok or ok(d.to)) then
       local dd = dx * dx + dy * dy
       if not bd or dd < bd then best, bd = d, dd end
     end
@@ -328,17 +331,39 @@ function Room:escape_door(th, jx, jy, ok)
   return best
 end
 
+--- A floor cell to hide on, out of reach of every door. Given where the janitor
+--- will stand (x, y), one at least `far` tiles from there if a few picks find
+--- one, else the farthest they found. Nil if the room has nowhere.
+function Room:hide_spot(rng, x, y, far)
+  local w, cells = self.w, self.cells
+  local bx, by, bd
+  for _ = 1, 80 do
+    local cx, cy = rng:int(w) - 1, rng:int(self.h) - 1
+    if cells[cy * w + cx + 1] == FLOOR and not self:near_door(cx, cy, 2) then
+      local dx, dy = cx + 0.5 - (x or 0), cy + 0.5 - (y or 0)
+      local d = x and dx * dx + dy * dy or math.huge
+      if d >= (far or 0) * (far or 0) then return cx + 0.5, cy + 0.5 end
+      if not bd or d > bd then bx, by, bd = cx + 0.5, cy + 0.5, d end
+    end
+  end
+  return bx, by
+end
+
 --- A thief arriving through the door from `from` (one that got away next door).
+--- They ran on while the janitor followed: they hide a few tiles in from the
+--- door, not on the tile the janitor steps out onto (they would bolt straight
+--- back through it, and the chase would never end).
 function Room:let_in(work, from, kind)
   if not self.cells then self.incoming = { work, from, kind }; return end
-  -- Always through a door: this runs inside a tick, with no pause to spread
-  -- the open-floor search over.
-  local back = false
+  -- The janitor's arrival is through a door: this runs inside a tick, with no
+  -- pause to spread the open-floor search over.
+  local entry, back = from, false
   for _, d in ipairs(self.data.doors) do if d.to == from then back = true end end
-  if not back and self.data.doors[1] then from = self.data.doors[1].to end
-  local x, y = self:arrival(from)
+  if not back and self.data.doors[1] then entry = self.data.doors[1].to end
+  local ex, ey = self:arrival(entry)
+  local x, y = self:hide_spot(self.rng, ex, ey, 5)
   local pace = self.thief and self.thief.pace
-  self.thief = new_thief(x, y, work, pace, kind, 0.6)
+  self.thief = new_thief(x or ex, y or ey, work, pace, kind, 0.6, from)
 end
 
 --- A break-in: a thief takes `work` off this room's wall and stays to hide.
@@ -346,12 +371,7 @@ end
 function Room:break_in(work, pace, rng, kind)
   for _, a in ipairs(self.art) do if a.work == work then a.missing = true end end
   if not self.cells then self.staged = { work, pace, kind }; return end
-  local w, h, cells = self.w, self.h, self.cells
-  local x, y
-  for _ = 1, 80 do
-    local cx, cy = rng:int(w) - 1, rng:int(h) - 1
-    if cells[cy * w + cx + 1] == FLOOR and not self:near_door(cx, cy, 2) then x, y = cx + 0.5, cy + 0.5; break end
-  end
+  local x, y = self:hide_spot(rng)
   if not x then x, y = self:arrival(self.data.doors[1] and self.data.doors[1].to) end
   self.thief = new_thief(x, y, work, pace, kind)
 end

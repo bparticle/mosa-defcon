@@ -70,6 +70,12 @@ Walking into a room with a thief, the toast says what kind ("Something in
 here is standing very still."). A thief who gets away with the bar over 60%
 full gets SO CLOSE.
 
+A thief who gets away never doubles back: `Room:escape_door` skips the door
+into the room they just left (`thief.from`), and they hide a few tiles in from
+the door they came through (`Room:hide_spot`), not on the tile you step out
+onto. So following them is a chase that moves on, and a room with no other
+way out is a corner: there you can hold the light on them.
+
 ## The weather
 
 Every day has a night of its own (`caper.night(day)`), the same for every

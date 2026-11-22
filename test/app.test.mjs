@@ -225,6 +225,62 @@ test('a thief who reaches a door gets away into the next room, and the hunt move
   assert.deepEqual(b.errors, []);
 });
 
+test('a thief who got away does not run straight back: following them through the door is a chase, not a loop', async () => {
+  const b = await bootApp();
+  await clockIn(b);
+  const hunted = () => String(b.lua('return mosa_debug.heist()')).split(',')[0];
+  let trips = 0;
+  for (let hop = 0; hop < 6; hop++) {
+    const at = hunted();
+    b.lua(`mosa_debug.travel("${at}")`); await b.frames(2);
+    // A door the thief can run through, into a room already walked (so they are let in, not laid out fresh).
+    const to = b.lua(`
+      local th = mosa_debug.game().room.thief
+      if not th or th.gone then return nil end
+      for _, d in ipairs(mosa_debug.game().room.data.doors) do
+        if mosa_debug.game():open_to(d.to) and d.to ~= th.from then return d.to end
+      end`);
+    if (!to) break; // a dead end: nowhere left to run, which is the point
+    b.lua(`mosa_debug.travel("${to}")`); await b.frames(2);
+    b.lua(`mosa_debug.travel("${at}")`); await b.frames(2);
+    // The thief beside that door, the janitor behind them: they get away through it.
+    b.lua(`
+      local gm = mosa_debug.game()
+      local th = gm.room.thief
+      th.stay, th.turn = nil, 99
+      for _, d in ipairs(gm.room.data.doors) do
+        if d.to == "${to}" then
+          for _, o in ipairs({ { 0, 1 }, { 0, -1 }, { 1, 0 }, { -1, 0 } }) do
+            local x, y = d.x + 0.5 + o[1], d.y + 0.5 + o[2]
+            if gm.room:walkable(x, y) and gm.room:walkable(x + o[1] * 2, y + o[2] * 2) then
+              th.x, th.y = x, y
+              gm.px, gm.py = x + o[1] * 2, y + o[2] * 2
+              return
+            end
+          end
+        end
+      end`);
+    for (let i = 0; i < 80 && hunted() === at; i++) await b.frames(1);
+    assert.equal(hunted(), to, 'the hunt moved next door');
+    // Follow through the real door, as a janitor would, and walk in a little.
+    b.lua(`local gm = mosa_debug.game(); gm:travel("${to}", "${at}"); while not gm:step_loading() do end`);
+    await b.frames(2);
+    const key = b.lua(`
+      local gm = mosa_debug.game()
+      local d = gm.room:nearest_door(gm.px, gm.py, 3)
+      for _, o in ipairs({ { 'up', 0, -1 }, { 'down', 0, 1 }, { 'left', -1, 0 }, { 'right', 1, 0 } }) do
+        local away = d and ((gm.px - d.x - 0.5) * o[2] + (gm.py - d.y - 0.5) * o[3]) >= 0
+        if away and gm.room:walkable(gm.px + o[2] * 2, gm.py + o[3] * 2) then return o[1] end
+      end`);
+    if (key) await b.hold(key, 4);
+    await b.frames(40);
+    assert.notEqual(hunted(), at, `the thief did not bolt back into ${at} the moment we came in (hop ${hop})`);
+    trips++;
+  }
+  assert.ok(trips >= 1, 'followed the thief through at least one door');
+  assert.deepEqual(b.errors, []);
+});
+
 test('the map travels: SELECT on another room teleports there', async () => {
   const b = await bootApp();
   await clockIn(b);

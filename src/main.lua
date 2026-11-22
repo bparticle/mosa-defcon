@@ -428,13 +428,14 @@ end
 -- ── the janitor's walk ──────────────────────────────────────────────────────
 Game = { name = "game" }
 Game.__index = Game
--- kind_of: work idx -> the kind of thief who has it. cell: the kinds caught
--- tonight, in order (vignette.lua draws them behind bars).
+-- kind_of: work idx -> the kind of thief who has it. fled_from: work idx -> the
+-- room that thief last got away from. cell: the kinds caught tonight, in order
+-- (vignette.lua draws them behind bars).
 function Game.new(plan)
   local w = weather()
   local s = setmetatable({ built = {}, fx = 0, fy = -1, armed = false, step = 0, heist = {}, plan = plan or {},
     caught = 0, tonight = { seen = 0, bottles = 0 }, night = night.new(), pace = 1 + (w.pace or 0),
-    weather = w, kind_of = {}, cell = {}, wave_caught = 0, storm = 8 }, Game)
+    weather = w, kind_of = {}, fled_from = {}, cell = {}, wave_caught = 0, storm = 8 }, Game)
   for _, h in ipairs(s.plan) do s.heist[h.room] = h.work; s.kind_of[h.work] = h.kind end
   night.begin_wave(s.night, #s.plan)
   s.ok = function(to) return s:open_to(to) end
@@ -577,7 +578,8 @@ function Game:travel(to, from)
     local room = self.built[to]
     if not room then
       room = world.build(data, { rng = rng, stock = stocker(net.nearby() > 0), pause = coroutine.yield,
-        works = works_by_idx, heist = self.heist[to], kind = self.kind_of[self.heist[to] or -1], pace = self.pace })
+        works = works_by_idx, heist = self.heist[to], kind = self.kind_of[self.heist[to] or -1], pace = self.pace,
+        from = self.fled_from[self.heist[to] or -1] })
       self.built[to] = room
     else
       room:resume(coroutine.yield)
@@ -636,6 +638,7 @@ function Game:fled(door)
   -- A swindler who has played their trick has no second dummy.
   local kind = th.tricked and "creep" or th.kind
   self.kind_of[th.work.idx] = kind
+  self.fled_from[th.work.idx] = room.data.id
   if self.built[to] then self.built[to]:let_in(th.work, room.data.id, kind) end
   if th.heat > world.HEAT * 0.6 then say("SO CLOSE", "They slipped into " .. room_name(to) .. ".", 3)
   elseif th.seen then say("THEY GOT AWAY", "Into " .. room_name(to) .. ". Go after them.", 3)

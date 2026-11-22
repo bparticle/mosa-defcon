@@ -5,6 +5,17 @@ versions: [SemVer](https://semver.org/), as defined for this app in [docs/RELEAS
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-22
+
+### Fixed
+
+- A thief who got away could never be caught. They were let into the next
+  room on the very tile you step out onto, heard you at once and bolted back
+  through the door you came in by, so every room you followed them into said
+  "THEY GOT AWAY" and you chased them back and forth for good. Now a thief
+  never runs back into the room they just left, and hides a few tiles in from
+  the door instead of at it. A room with no other way out corners them.
+
 ## [0.8.2] - 2026-11-21
 
 ### Fixed
